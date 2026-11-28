@@ -3,6 +3,7 @@
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
 pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+pub use math_memory::ArenaError;
 pub use math_scalars::ScalarError;
 use thiserror::Error;
 
@@ -211,6 +212,33 @@ impl From<&'static str> for MathError {
     }
 }
 
+impl From<ArenaError> for MathError {
+    fn from(err: ArenaError) -> Self {
+        match err {
+            ArenaError::InsufficientBytes {
+                required,
+                available,
+                ..
+            } => Self::WorkspaceTooSmall {
+                required,
+                available,
+            },
+            ArenaError::IndexOutOfBounds { index, len } => Self::WorkspaceTooSmall {
+                required: index.saturating_add(1),
+                available: len,
+            },
+            ArenaError::InvalidAlignment { .. }
+            | ArenaError::ArithmeticOverflow
+            | ArenaError::InvalidCheckpoint { .. }
+            | ArenaError::AllocationFailed { .. }
+            | ArenaError::RegionOutOfOrder { .. } => Self::WorkspaceTooSmall {
+                required: usize::MAX,
+                available: 0,
+            },
+        }
+    }
+}
+
 impl From<ScalarError> for MathError {
     fn from(err: ScalarError) -> Self {
         match err {
@@ -311,7 +339,12 @@ mod tests {
     }
 
     #[test]
-    fn zero_allocation_diagnostic_visitation_for_scalar_and_math() {
+    fn zero_allocation_diagnostic_visitation_for_arena_scalar_and_math() {
+        let arena_err = ArenaError::InsufficientBytes {
+            required: 32,
+            available: 16,
+            align: 8,
+        };
         let scalar_err = ScalarError::WorkspaceTooSmall {
             required: 32,
             available: 16,
@@ -325,12 +358,13 @@ mod tests {
 
         let (count, _metrics) = VerifiedEngine::run_verified(|| {
             let mut v = NullVisitor(0);
+            arena_err.visit_fields(&mut v);
             scalar_err.visit_fields(&mut v);
             math_err.visit_fields(&mut v);
             umbrella_err.visit_fields(&mut v);
             v.0
         });
-        assert!(count >= 13);
+        assert!(count >= 16);
 
         assert_eq!(
             math_err.metadata().get("code").map(String::as_str),
@@ -339,6 +373,13 @@ mod tests {
         assert_eq!(
             umbrella_err.metadata().get("code").map(String::as_str),
             Some("SCALAR-002")
+        );
+        assert_eq!(
+            MathCommonsError::from(arena_err)
+                .metadata()
+                .get("code")
+                .map(String::as_str),
+            Some("MEM-003")
         );
     }
 
@@ -383,6 +424,7 @@ mod tests {
                 expected: Dimension(2),
                 actual: Dimension(3),
             }),
+            MathCommonsError::from(ArenaError::ArithmeticOverflow),
             MathCommonsError::from(ScalarError::InvalidStepSize { value: -0.5 }),
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),

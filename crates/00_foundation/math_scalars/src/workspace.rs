@@ -1,10 +1,13 @@
 // [cite:math_scalars]
-//! Caller-owned [`SolverWorkspace`], [`StepSize`], [`GridIndex`], [`Dimension`], and flat indexers.
+//! Caller-owned [`ScalarWorkspace`], [`SolverWorkspace`], [`StepSize`], [`GridIndex`], [`Dimension`], and flat indexers.
 
 use crate::error::ScalarError;
 use crate::traits::RealField;
 use core::fmt;
 use core::ops::{Deref, DerefMut};
+#[cfg(feature = "alloc")]
+pub use math_memory::OwnedByteArena;
+pub use math_memory::{ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, SolverWorkspace};
 
 /// A physical or numerical grid step size, generic over [`RealField`] (defaulting to `f64`).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
@@ -126,15 +129,15 @@ pub const fn flatten_3d_index(x: usize, y: usize, z: usize, width: usize, height
     (z * height + y) * width + x
 }
 
-/// Zero-allocation caller-owned mutable scratch arena shared across linear algebra, ODE/SDE,
+/// Zero-allocation caller-owned mutable scalar scratch slice shared across linear algebra, ODE/SDE,
 /// PDE/SPDE, and optimization solvers.
 #[derive(Debug)]
-pub struct SolverWorkspace<'a, T> {
+pub struct ScalarWorkspace<'a, T> {
     buf: &'a mut [T],
 }
 
-impl<'a, T> SolverWorkspace<'a, T> {
-    /// Wraps a caller-owned mutable slice as a reusable solver workspace.
+impl<'a, T> ScalarWorkspace<'a, T> {
+    /// Wraps a caller-owned mutable slice as a reusable scalar solver workspace.
     #[inline]
     #[must_use]
     pub fn new(buf: &'a mut [T]) -> Self {
@@ -177,8 +180,8 @@ impl<'a, T> SolverWorkspace<'a, T> {
 
     /// Reborrows the remaining scratch slice for a nested solver call without consuming `self`.
     #[inline]
-    pub fn reborrow(&mut self) -> SolverWorkspace<'_, T> {
-        SolverWorkspace { buf: self.buf }
+    pub fn reborrow_scalars(&mut self) -> ScalarWorkspace<'_, T> {
+        ScalarWorkspace { buf: self.buf }
     }
 
     /// Fallibly carves off `count` leading elements from the workspace, advancing `self` to the tail.
@@ -204,11 +207,11 @@ impl<'a, T> SolverWorkspace<'a, T> {
     #[inline]
     pub fn take_slice(&mut self, count: usize) -> &'a mut [T] {
         self.try_take_slice(count)
-            .expect("SolverWorkspace::take_slice capacity exceeded")
+            .expect("ScalarWorkspace::take_slice capacity exceeded")
     }
 }
 
-impl<'a, T: RealField> SolverWorkspace<'a, T> {
+impl<'a, T: RealField> ScalarWorkspace<'a, T> {
     /// Fills all remaining workspace elements with [`RealField::ZERO`].
     #[inline]
     pub fn zero_fill(&mut self) {
@@ -220,7 +223,7 @@ impl<'a, T: RealField> SolverWorkspace<'a, T> {
     pub fn try_split(
         &mut self,
         count: usize,
-    ) -> Result<(&mut [T], SolverWorkspace<'_, T>), ScalarError> {
+    ) -> Result<(&mut [T], ScalarWorkspace<'_, T>), ScalarError> {
         let available = self.buf.len();
         if available < count {
             return Err(ScalarError::WorkspaceTooSmall {
@@ -230,30 +233,58 @@ impl<'a, T: RealField> SolverWorkspace<'a, T> {
         }
         let (head, tail) = self.buf.split_at_mut(count);
         head.fill(T::ZERO);
-        Ok((head, SolverWorkspace { buf: tail }))
+        Ok((head, ScalarWorkspace { buf: tail }))
     }
 }
 
-/// Optional heap-backed workspace convenience wrapper enabled by the `alloc` Cargo feature.
-#[cfg(feature = "alloc")]
-#[derive(Debug, Clone)]
-pub struct OwnedWorkspace<T> {
-    buf: alloc::vec::Vec<T>,
-}
-
-#[cfg(feature = "alloc")]
-impl<T: RealField> OwnedWorkspace<T> {
-    /// Allocates a workspace of `capacity` zeroed scalars once for repeated zero-alloc solver calls.
-    #[must_use]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            buf: alloc::vec![T::ZERO; capacity],
-        }
-    }
-
-    /// Borrows the owned buffer as a [`SolverWorkspace`].
+impl<T: RealField> SolverWorkspace for ScalarWorkspace<'_, T> {
     #[inline]
-    pub fn as_workspace(&mut self) -> SolverWorkspace<'_, T> {
-        SolverWorkspace::new(&mut self.buf)
+    fn byte_capacity(&self) -> usize {
+        core::mem::size_of_val(self.buf)
+    }
+
+    #[inline]
+    fn remaining_bytes(&self) -> usize {
+        core::mem::size_of_val(self.buf)
+    }
+
+    #[inline]
+    fn reset(&mut self) {}
+
+    #[inline]
+    fn reborrow(&mut self) -> ByteArena<'_> {
+        ByteArena::from_pod_slice(self.buf)
+    }
+
+    #[inline]
+    fn cursor(&mut self) -> ByteCursor<'_> {
+        ByteCursor::new(bytemuck::cast_slice_mut(self.buf))
+    }
+
+    fn alloc_slice<U: bytemuck::Pod + bytemuck::Zeroable>(
+        &mut self,
+        len: usize,
+    ) -> Result<&mut [U], ArenaError> {
+        let elem_bytes = core::mem::size_of::<T>();
+        if elem_bytes == 0 {
+            return ByteCursor::new(&mut []).alloc_slice::<U>(len);
+        }
+        let req_bytes = len
+            .checked_mul(core::mem::size_of::<U>())
+            .ok_or(ArenaError::ArithmeticOverflow)?;
+        let needed_elems = req_bytes
+            .saturating_add(core::mem::align_of::<U>().saturating_sub(1))
+            .div_ceil(elem_bytes);
+        if needed_elems > self.buf.len() {
+            return Err(ArenaError::InsufficientBytes {
+                required: req_bytes,
+                available: core::mem::size_of_val(self.buf),
+                align: core::mem::align_of::<U>(),
+            });
+        }
+        let full = core::mem::take(&mut self.buf);
+        let (head, tail) = full.split_at_mut(needed_elems);
+        self.buf = tail;
+        ByteCursor::new(bytemuck::cast_slice_mut(head)).alloc_slice::<U>(len)
     }
 }

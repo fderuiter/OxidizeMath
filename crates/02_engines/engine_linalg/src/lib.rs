@@ -55,11 +55,12 @@ pub use tikhonov::{
     tikhonov_workspace_len,
 };
 #[cfg(feature = "alloc")]
-pub use types::OwnedWorkspace;
+pub use types::OwnedByteArena;
 pub use types::{
-    DenseView, LinalgError, LinearAlgebraError, SolverWorkspace, add_scaled_vec_array,
-    check_all_finite, identity_array, identity_plus_scaled_array, mat_idx, mat_mul, mat_mul_array,
-    mat_mul_transpose_right, mat_mul_transpose_right_array, mat_vec_mul,
+    ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, DenseView, LinalgError, LinalgWorkspace,
+    LinearAlgebraError, SolverWorkspace, add_scaled_vec_array, check_all_finite, identity_array,
+    identity_plus_scaled_array, mat_idx, mat_mul, mat_mul_array, mat_mul_transpose_right,
+    mat_mul_transpose_right_array, mat_vec_mul,
 };
 
 #[cfg(test)]

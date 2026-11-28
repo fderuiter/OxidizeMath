@@ -16,10 +16,16 @@ pub mod algebra {
             LinearAlgebraError, canonical, eigen,
         };
         pub use engine_linalg::nalgebra_ops::{
-            decomposition, effective_rank, low_rank_approximation, moore_penrose_pseudoinverse,
-            numerical, solve_cholesky_system, solve_conjugate_gradient, solve_gmres_restarted,
-            solve_linear_system, solve_normal_equation, solve_tikhonov_system,
-            try_low_rank_approximation, try_moore_penrose_pseudoinverse,
+            decomposition, effective_rank, effective_rank_with_workspace,
+            linalg_solve_workspace_bytes, low_rank_approximation, moore_penrose_pseudoinverse,
+            numerical, solve_cholesky_system, solve_cholesky_system_with_workspace,
+            solve_conjugate_gradient, solve_conjugate_gradient_with_workspace,
+            solve_gmres_restarted, solve_gmres_restarted_with_workspace, solve_linear_system,
+            solve_linear_system_with_workspace, solve_normal_equation,
+            solve_normal_equation_with_workspace, solve_tikhonov_system,
+            solve_tikhonov_system_with_workspace, svd_decomposition_workspace_bytes,
+            try_low_rank_approximation, try_low_rank_approximation_with_workspace,
+            try_moore_penrose_pseudoinverse, try_moore_penrose_pseudoinverse_with_workspace,
         };
     }
 }

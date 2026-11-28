@@ -1,9 +1,19 @@
 // [cite:math_commons]
 use core::fmt::Debug;
+use core::marker::PhantomData;
 use core::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
 };
-use rand_core::RngCore;
+#[cfg(feature = "alloc")]
+pub use math_memory::OwnedByteArena;
+pub use math_memory::{ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, SolverWorkspace};
+
+#[path = "sampling.rs"]
+mod sampling;
+pub use sampling::{
+    fill_standard_normal, sample_open_unit, sample_standard_normal, sample_standard_normal_pair,
+    ssa_sample_event,
+};
 
 /// A physical step size, typically used for grid spacing.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
@@ -94,6 +104,8 @@ pub fn flatten_3d_index(x: usize, y: usize, z: usize, width: usize, height: usiz
 pub trait Scalar:
     Copy
     + Clone
+    + bytemuck::Pod
+    + bytemuck::Zeroable
     + PartialEq
     + PartialOrd
     + Debug
@@ -270,15 +282,15 @@ impl Scalar for f32 {
     }
 }
 
-/// Zero-allocation borrowed scratch workspace partitioning caller-supplied mutable slices across solver stages.
+/// Zero-allocation borrowed scalar workspace backed by a `bytemuck` byte slice and implementing [`SolverWorkspace`].
 ///
 /// # Example
 /// ```
-/// use math_commons::math_kernel::types::SolverWorkspace;
+/// use math_commons::math_kernel::types::ScalarWorkspace;
 ///
 /// let mut raw = [0.0_f64; 8];
-/// let mut ws = SolverWorkspace::new(&mut raw);
-/// let mut step_ws = ws.reborrow();
+/// let mut ws = ScalarWorkspace::new(&mut raw);
+/// let mut step_ws = ws.reborrow_scalars();
 /// let stage_a = step_ws.take_slice(4);
 /// let stage_b = step_ws.take_slice(4);
 /// stage_a[0] = 1.0;
@@ -286,53 +298,64 @@ impl Scalar for f32 {
 /// assert_eq!(stage_a[0] + stage_b[0], 3.0);
 /// ```
 #[derive(Debug)]
-pub struct SolverWorkspace<'a, T: Scalar> {
-    buf: &'a mut [T],
+pub struct ScalarWorkspace<'a, T: Scalar> {
+    bytes: &'a mut [u8],
+    _marker: PhantomData<&'a mut [T]>,
 }
 
-impl<'a, T: Scalar> SolverWorkspace<'a, T> {
-    /// Wraps a caller-provided mutable scratch slice as a zero-allocation [`SolverWorkspace`].
+impl<'a, T: Scalar> ScalarWorkspace<'a, T> {
+    /// Wraps a caller-provided mutable scalar slice as a zero-allocation [`ScalarWorkspace`].
     #[inline]
+    #[must_use]
     pub fn new(buf: &'a mut [T]) -> Self {
-        Self { buf }
+        Self {
+            bytes: bytemuck::cast_slice_mut(buf),
+            _marker: PhantomData,
+        }
     }
 
-    /// Returns the remaining number of unpartitioned scalar elements in this workspace.
+    /// Returns the remaining number of aligned scalar `T` elements in this workspace.
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
-        self.buf.len()
+        bytemuck::pod_align_to::<u8, T>(self.bytes).1.len()
     }
 
-    /// Returns `true` if no unpartitioned scalar elements remain in this workspace.
+    /// Returns `true` if no aligned scalar `T` elements remain in this workspace.
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
+        self.len() == 0
     }
 
-    /// Borrows the remaining workspace buffer as an immutable slice.
+    /// Borrows the remaining aligned scalar buffer as an immutable slice.
     #[inline]
+    #[must_use]
     pub fn as_slice(&self) -> &[T] {
-        self.buf
+        bytemuck::pod_align_to::<u8, T>(self.bytes).1
     }
 
-    /// Borrows the remaining workspace buffer as a mutable slice.
+    /// Borrows the remaining aligned scalar buffer as a mutable slice.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        self.buf
+        bytemuck::pod_align_to_mut::<u8, T>(self.bytes).1
     }
 
-    /// Creates a scoped sub-workspace over the remaining slice so per-step scratch slices can be
-    /// partitioned repeatedly inside loops without consuming the outer workspace.
+    /// Creates a scoped typed sub-workspace over the remaining bytes that rewinds on drop.
     #[inline]
-    pub fn reborrow(&mut self) -> SolverWorkspace<'_, T> {
-        SolverWorkspace { buf: self.buf }
+    #[must_use]
+    pub fn reborrow_scalars(&mut self) -> ScalarWorkspace<'_, T> {
+        ScalarWorkspace {
+            bytes: self.bytes,
+            _marker: PhantomData,
+        }
     }
 
     /// Fills the remaining workspace buffer with [`Scalar::ZERO`].
     #[verified_engine::verified]
     pub fn zero_fill(&mut self) {
-        self.buf.fill(T::ZERO);
-        debug_assert!(self.buf.first().is_none_or(|v| *v == T::ZERO));
+        self.bytes.fill(0);
+        debug_assert!(self.as_slice().first().is_none_or(|v| *v == T::ZERO));
     }
 
     /// Carves off a disjoint mutable slice of length `len` from the front of the workspace,
@@ -340,7 +363,7 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
     /// without heap allocation when `len > self.len()`.
     #[verified_engine::verified]
     pub fn try_take_slice(&mut self, len: usize) -> Result<&'a mut [T], crate::error::MathError> {
-        let available = self.buf.len();
+        let available = self.len();
         if len > available {
             return Err(crate::error::MathError::WorkspaceTooSmall {
                 required: len,
@@ -348,9 +371,10 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
             });
         }
         debug_assert!(len <= available);
-        let full = core::mem::take(&mut self.buf);
-        let (head, tail) = full.split_at_mut(len);
-        self.buf = tail;
+        let full = core::mem::take(&mut self.bytes);
+        let mut cur = ByteCursor::new(full);
+        let head = cur.alloc_slice::<T>(len)?;
+        self.bytes = cur.into_bytes();
         Ok(head)
     }
 
@@ -361,109 +385,57 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
     /// Panics if `len > self.len()`.
     #[verified_engine::verified]
     pub fn take_slice(&mut self, len: usize) -> &'a mut [T] {
+        let avail = self.len();
         assert!(
-            len <= self.buf.len(),
-            "SolverWorkspace::take_slice requested {len} elements from buffer of length {}",
-            self.buf.len()
+            len <= avail,
+            "ScalarWorkspace::take_slice requested {len} elements from buffer of length {avail}",
         );
-        let full = core::mem::take(&mut self.buf);
-        let (head, tail) = full.split_at_mut(len);
-        self.buf = tail;
-        head
+        self.try_take_slice(len)
+            .expect("ScalarWorkspace::take_slice pre-checked capacity")
     }
 }
 
-/// Samples a deterministic uniform variate strictly in `(0, 1)` (clamped `<= 1.0` after `f32` cast)
-/// via [`math_rng::sample_open`], avoiding `0.0` so `ln(u)` in Box-Muller sampling never overflows.
-#[inline]
-#[verified_engine::verified]
-pub fn sample_open_unit<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
-    let u_f64: f64 = math_rng::sample_open(rng);
-    let u = T::from_f64(u_f64);
-    debug_assert!(u > T::ZERO && u <= T::ONE);
-    u
-}
-
-/// Samples an independent pair of standard normal $\mathcal{N}(0, 1)$ variates via the Box-Muller transform.
-#[inline]
-#[verified_engine::verified]
-pub fn sample_standard_normal_pair<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> (T, T) {
-    let u1 = sample_open_unit::<T, R>(rng);
-    let u2 = sample_open_unit::<T, R>(rng);
-    let neg_two_ln = -(T::TWO * u1.ln());
-    let radius = neg_two_ln.max(T::ZERO).sqrt();
-    let theta = T::TAU * u2;
-    let z0 = radius * theta.cos();
-    let z1 = radius * theta.sin();
-    debug_assert!(z0.is_finite() && z1.is_finite());
-    (z0, z1)
-}
-
-/// Samples a single standard normal $\mathcal{N}(0, 1)$ variate from `rng` via Box-Muller.
-#[inline]
-#[verified_engine::verified]
-pub fn sample_standard_normal<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
-    let (z0, _) = sample_standard_normal_pair::<T, R>(rng);
-    debug_assert!(z0.is_finite());
-    z0
-}
-
-/// Fills `out` in-place with independent standard normal $\mathcal{N}(0, 1)$ samples drawn from `rng`.
-#[verified_engine::verified]
-pub fn fill_standard_normal<T: Scalar, R: RngCore + ?Sized>(out: &mut [T], rng: &mut R) {
-    let (pairs, rem) = out.as_chunks_mut::<2>();
-    for [p0, p1] in pairs {
-        let (z0, z1) = sample_standard_normal_pair::<T, R>(rng);
-        *p0 = z0;
-        *p1 = z1;
-    }
-    if let Some(last) = rem.first_mut() {
-        *last = sample_standard_normal::<T, R>(rng);
-    }
-    debug_assert!(out.iter().all(|v| v.is_finite()));
-}
-
-/// Samples the next reaction waiting time $\tau > 0$ and reaction index $j \in 0..\text{propensities.len()}$
-/// via Gillespie's exact Stochastic Simulation Algorithm (direct method) without heap allocation.
-///
-/// Returns `None` if `propensities` is empty or the total propensity $a_0 = \sum_j a_j \le 0$.
-#[verified_engine::verified]
-pub fn ssa_sample_event<T: Scalar, R: RngCore + ?Sized>(
-    propensities: &[T],
-    rng: &mut R,
-) -> Option<(T, usize)> {
-    if propensities.is_empty() {
-        return None;
-    }
-    let mut total = T::ZERO;
-    for &rate in propensities {
-        debug_assert!(rate >= T::ZERO, "propensity must be non-negative");
-        if rate > T::ZERO {
-            total += rate;
-        }
-    }
-    if total <= T::ZERO {
-        return None;
+impl<T: Scalar> SolverWorkspace for ScalarWorkspace<'_, T> {
+    #[inline]
+    fn byte_capacity(&self) -> usize {
+        self.bytes.len()
     }
 
-    let u1 = sample_open_unit::<T, R>(rng);
-    let u2 = sample_open_unit::<T, R>(rng);
-    let tau = -(u1.ln()) / total;
-    let threshold = u2 * total;
+    #[inline]
+    fn remaining_bytes(&self) -> usize {
+        self.bytes.len()
+    }
 
-    let mut cumulative = T::ZERO;
-    let mut chosen = propensities.len() - 1;
-    for (idx, &rate) in propensities.iter().enumerate() {
-        if rate > T::ZERO {
-            cumulative += rate;
-            if cumulative >= threshold {
-                chosen = idx;
-                break;
+    #[inline]
+    fn reset(&mut self) {}
+
+    #[inline]
+    fn reborrow(&mut self) -> ByteArena<'_> {
+        ByteArena::new(self.bytes)
+    }
+
+    #[inline]
+    fn cursor(&mut self) -> ByteCursor<'_> {
+        ByteCursor::new(self.bytes)
+    }
+
+    fn alloc_slice<U: bytemuck::Pod + bytemuck::Zeroable>(
+        &mut self,
+        len: usize,
+    ) -> Result<&mut [U], ArenaError> {
+        let full = core::mem::take(&mut self.bytes);
+        let mut cur = ByteCursor::new(full);
+        match cur.alloc_slice::<U>(len) {
+            Ok(slice) => {
+                self.bytes = cur.into_bytes();
+                Ok(slice)
+            }
+            Err(err) => {
+                self.bytes = cur.into_bytes();
+                Err(err)
             }
         }
     }
-    debug_assert!(tau >= T::ZERO && chosen < propensities.len());
-    Some((tau, chosen))
 }
 
 #[cfg(test)]

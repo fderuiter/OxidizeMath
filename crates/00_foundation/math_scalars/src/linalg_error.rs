@@ -4,6 +4,7 @@
 use crate::error::ScalarError;
 use core::fmt;
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_memory::ArenaError;
 
 /// Computes the flat row-major index for `(row, col)` in a matrix with `ncols` columns.
 #[inline]
@@ -93,6 +94,26 @@ impl Diagnostic for LinalgError {
             Self::NonConvergence => {
                 visitor.record_str("code", "LINALG-006");
             }
+        }
+    }
+}
+
+impl From<ArenaError> for LinalgError {
+    #[inline]
+    fn from(err: ArenaError) -> Self {
+        match err {
+            ArenaError::InsufficientBytes {
+                required,
+                available,
+                ..
+            } => Self::WorkspaceTooSmall {
+                required,
+                available,
+            },
+            _ => Self::WorkspaceTooSmall {
+                required: usize::MAX,
+                available: 0,
+            },
         }
     }
 }

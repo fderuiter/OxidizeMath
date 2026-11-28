@@ -22,7 +22,7 @@ fn test_lauchli_and_near_collinear_glm_conditioning_at_eps_1e8() {
         &y,
         &mut beta_est,
         &mut perm,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut LinalgWorkspace::new(&mut scratch),
     )
     .unwrap();
     assert_eq!(rank, 3);
@@ -94,7 +94,7 @@ fn test_vandermonde_streaming_qr_and_cohort_glm_contrast_at_eps_1e8() {
         3,
         &mut tau,
         &mut perm,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut LinalgWorkspace::new(&mut scratch),
     )
     .unwrap();
     assert_eq!(rank, 3);
@@ -119,7 +119,7 @@ fn test_nan_and_non_convergence_errors() {
             2,
             1e-10,
             &mut pinv,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut LinalgWorkspace::new(&mut scratch),
         ),
         Err(LinalgError::InvalidInput)
     );
@@ -130,7 +130,7 @@ fn test_nan_and_non_convergence_errors() {
             2,
             1,
             &mut approx,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut LinalgWorkspace::new(&mut scratch),
         ),
         Err(LinalgError::InvalidInput)
     );
@@ -148,7 +148,7 @@ fn test_nan_and_non_convergence_errors() {
             &mut s,
             &mut vt,
             0,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut LinalgWorkspace::new(&mut scratch),
         ),
         Err(LinalgError::NonConvergence)
     );
@@ -174,10 +174,10 @@ fn test_zero_heap_allocations_dense_solvers() {
             &b,
             &mut x,
             &mut perm,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut LinalgWorkspace::new(&mut scratch),
         )
         .unwrap();
-        cholesky_solve(&a, &b, &mut x, 2, &mut SolverWorkspace::new(&mut scratch)).unwrap();
+        cholesky_solve(&a, &b, &mut x, 2, &mut LinalgWorkspace::new(&mut scratch)).unwrap();
         svd_jacobi(
             &a,
             (2, 2),
@@ -185,7 +185,7 @@ fn test_zero_heap_allocations_dense_solvers() {
             &mut s,
             &mut vt,
             32,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut LinalgWorkspace::new(&mut scratch),
         )
         .unwrap();
         svd_bidiagonal(
@@ -195,7 +195,7 @@ fn test_zero_heap_allocations_dense_solvers() {
             &mut u,
             &mut s,
             &mut vt,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut LinalgWorkspace::new(&mut scratch),
         )
         .unwrap();
     });
@@ -218,7 +218,7 @@ fn test_zero_heap_allocations_krylov_solvers() {
             &mut x,
             1e-12,
             20,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut LinalgWorkspace::new(&mut scratch),
         )
         .unwrap();
         x = [0.0; 2];
@@ -229,8 +229,30 @@ fn test_zero_heap_allocations_krylov_solvers() {
             2,
             1e-12,
             10,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut LinalgWorkspace::new(&mut scratch),
         )
         .unwrap();
+    });
+}
+
+#[test]
+fn test_zero_heap_allocations_byte_arena_heterogeneous() {
+    let a = [4.0_f64, 1.0, 1.0, 3.0];
+    let b = [5.0_f64, 4.0];
+
+    let ((), _metrics) = VerifiedEngine::run_verified(|| {
+        let mut raw = [0_u8; 2048];
+        let mut arena = ByteArena::new(&mut raw);
+        let mut x = [0.0_f64; 2];
+        let mut perm = [0_usize; 2];
+        qr_or_svd_solve(&a, 2, 2, &b, &mut x, &mut perm, &mut arena).unwrap();
+        assert!((x[0] - 1.0).abs() < 1e-12);
+        assert!((x[1] - 1.0).abs() < 1e-12);
+        // Reborrow kept the outer arena intact for subsequent heterogeneous f32 solve:
+        let a32 = [4.0_f32, 1.0, 1.0, 3.0];
+        let b32 = [5.0_f32, 4.0];
+        let mut x32 = [0.0_f32; 2];
+        cholesky_solve(&a32, &b32, &mut x32, 2, &mut arena).unwrap();
+        assert!((x32[0] - 1.0).abs() < 1e-5);
     });
 }

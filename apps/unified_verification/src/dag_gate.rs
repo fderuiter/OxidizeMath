@@ -87,6 +87,7 @@ pub fn classify_package(pkg: &PackageManifest) -> Option<DagRole> {
             return Some(DagRole::Runtime(DagTier::Pure01));
         }
         "math_diagnostics"
+        | "math_memory"
         | "math_rng"
         | "math_scalars"
         | "scientific_metadata"

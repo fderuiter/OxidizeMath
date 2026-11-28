@@ -1,12 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "no_std_engine"))]
 // [cite:engine_linalg]
 // [cite:advanced_linear_algebra]
-//! Error types, caller-owned [`SolverWorkspace`] buffers, row-major views, and stack array kernels.
+//! Error types, caller-owned [`LinalgWorkspace`] and [`SolverWorkspace`] buffers, row-major views, and stack array kernels.
 
 use crate::scalar::Scalar;
+use core::marker::PhantomData;
 #[cfg(feature = "alloc")]
-pub use math_scalars::OwnedWorkspace;
-pub use math_scalars::{LinalgError, LinearAlgebraError, ScalarError, SolverWorkspace, mat_idx};
+pub use math_memory::OwnedByteArena;
+pub use math_memory::{ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, SolverWorkspace};
+pub use math_scalars::{LinalgError, LinearAlgebraError, ScalarError, mat_idx};
 
 /// Validates that every element in `slice` is finite (`!is_nan()` and `!is_infinite()`).
 /// `[cite:engine_linalg]`
@@ -18,6 +20,139 @@ pub fn check_all_finite<T: Scalar>(slice: &[T]) -> Result<(), LinalgError> {
         }
     }
     Ok(())
+}
+
+/// Carves `count` zeroed scalar `T` elements from `cur`, mapping byte exhaustion to scalar counts.
+#[inline]
+pub(crate) fn carve_scalars<'a, T: Scalar>(
+    cur: &mut ByteCursor<'a>,
+    count: usize,
+) -> Result<&'a mut [T], LinalgError> {
+    let elem_size = core::mem::size_of::<T>();
+    cur.alloc_slice::<T>(count).map_err(|err| match err {
+        ArenaError::InsufficientBytes { available, .. } => LinalgError::WorkspaceTooSmall {
+            required: count,
+            available: available
+                .checked_div(elem_size)
+                .unwrap_or(0)
+                .min(count.saturating_sub(1)),
+        },
+        _ => LinalgError::WorkspaceTooSmall {
+            required: count,
+            available: 0,
+        },
+    })
+}
+
+/// Caller-owned mutable scalar slice wrapper implementing [`SolverWorkspace`] without heap allocation.
+#[derive(Debug)]
+pub struct LinalgWorkspace<'a, T: Scalar> {
+    bytes: &'a mut [u8],
+    _marker: PhantomData<&'a mut [T]>,
+}
+
+impl<'a, T: Scalar> LinalgWorkspace<'a, T> {
+    /// Wraps a caller-owned mutable scalar slice as a reusable linear algebra workspace.
+    #[inline]
+    #[must_use]
+    pub fn new(buf: &'a mut [T]) -> Self {
+        Self {
+            bytes: bytemuck::cast_slice_mut(buf),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Creates an empty zero-capacity workspace for routines that operate strictly in-place.
+    #[inline]
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            bytes: &mut [],
+            _marker: PhantomData,
+        }
+    }
+
+    /// Returns the number of aligned scalar `T` elements remaining in this workspace.
+    #[inline]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        bytemuck::pod_align_to::<u8, T>(self.bytes).1.len()
+    }
+
+    /// Returns `true` if the workspace holds zero aligned scalar `T` elements.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Splits off `count` zero-initialized scalar elements and returns the remaining sub-workspace.
+    #[inline]
+    pub fn try_split(
+        &mut self,
+        count: usize,
+    ) -> Result<(&mut [T], LinalgWorkspace<'_, T>), LinalgError> {
+        let available = self.len();
+        if available < count {
+            return Err(LinalgError::WorkspaceTooSmall {
+                required: count,
+                available,
+            });
+        }
+        let mut cur = ByteCursor::new(self.bytes);
+        let head = carve_scalars::<T>(&mut cur, count)?;
+        let rest_bytes = cur.into_bytes();
+        Ok((
+            head,
+            LinalgWorkspace {
+                bytes: rest_bytes,
+                _marker: PhantomData,
+            },
+        ))
+    }
+}
+
+impl<T: Scalar> SolverWorkspace for LinalgWorkspace<'_, T> {
+    #[inline]
+    fn byte_capacity(&self) -> usize {
+        self.bytes.len()
+    }
+
+    #[inline]
+    fn remaining_bytes(&self) -> usize {
+        self.bytes.len()
+    }
+
+    #[inline]
+    fn reset(&mut self) {}
+
+    #[inline]
+    fn reborrow(&mut self) -> ByteArena<'_> {
+        ByteArena::new(self.bytes)
+    }
+
+    #[inline]
+    fn cursor(&mut self) -> ByteCursor<'_> {
+        ByteCursor::new(self.bytes)
+    }
+
+    fn alloc_slice<U: bytemuck::Pod + bytemuck::Zeroable>(
+        &mut self,
+        len: usize,
+    ) -> Result<&mut [U], ArenaError> {
+        let full = core::mem::take(&mut self.bytes);
+        let mut cur = ByteCursor::new(full);
+        match cur.alloc_slice::<U>(len) {
+            Ok(slice) => {
+                self.bytes = cur.into_bytes();
+                Ok(slice)
+            }
+            Err(err) => {
+                self.bytes = cur.into_bytes();
+                Err(err)
+            }
+        }
+    }
 }
 
 /// Immutable row-major dense matrix view over a caller slice.

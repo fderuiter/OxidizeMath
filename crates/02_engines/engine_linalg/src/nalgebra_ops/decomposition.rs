@@ -17,13 +17,42 @@
 // [cite:engine_linalg]
 // [cite:advanced_linear_algebra]
 
-use alloc::vec;
-
-use super::numerical::{LinearAlgebraError, dmatrix_to_row_major};
-use crate::{SolverWorkspace, svd_effective_rank, svd_low_rank_approx, svd_ops_workspace_len};
+use super::numerical::{LinearAlgebraError, workspace::copy_dmatrix_to_row_major_slice};
+use crate::{
+    LinalgError, SolverWorkspace, mat_idx, svd_effective_rank, svd_low_rank_approx,
+    svd_ops_workspace_len,
+};
+use math_memory::{ArenaLayout, OwnedByteArena};
 use nalgebra::DMatrix;
 
 const DEFAULT_EFFECTIVE_RANK_TOL: f64 = 1e-12;
+
+/// Returns conservative byte capacity required by [`effective_rank_with_workspace`] and [`try_low_rank_approximation_with_workspace`].
+#[must_use]
+pub fn svd_decomposition_workspace_bytes(nrows: usize, ncols: usize) -> usize {
+    let mn = nrows.saturating_mul(ncols);
+    let mut layout = ArenaLayout::new();
+    let _ = layout.reserve::<f64>(
+        mn.saturating_mul(2)
+            .saturating_add(svd_ops_workspace_len(nrows, ncols)),
+    );
+    layout.total_bytes().saturating_add(64)
+}
+
+/// Computes the effective rank of `matrix` using caller-supplied `workspace` (`0` heap allocations).
+pub fn effective_rank_with_workspace(
+    matrix: &DMatrix<f64>,
+    tolerance: Option<f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
+) -> Result<usize, LinearAlgebraError> {
+    let tol = tolerance.unwrap_or(DEFAULT_EFFECTIVE_RANK_TOL);
+    let (m, n) = matrix.shape();
+    let mut cur = workspace.cursor();
+    let a_row = cur.alloc_slice::<f64>(m * n).map_err(LinalgError::from)?;
+    copy_dmatrix_to_row_major_slice(matrix, a_row);
+    let mut sub = cur.into_arena();
+    Ok(svd_effective_rank(a_row, m, n, tol, &mut sub)?)
+}
 
 /// Computes the effective rank of a matrix using [`crate`] Singular Value Decomposition (SVD).
 ///
@@ -37,11 +66,34 @@ const DEFAULT_EFFECTIVE_RANK_TOL: f64 = 1e-12;
 /// assert_eq!(effective_rank(&diag, Some(1e-5)), 2);
 /// ```
 pub fn effective_rank(matrix: &DMatrix<f64>, tolerance: Option<f64>) -> usize {
-    let tol = tolerance.unwrap_or(DEFAULT_EFFECTIVE_RANK_TOL);
     let (m, n) = matrix.shape();
-    let a_row = dmatrix_to_row_major(matrix);
-    let mut scratch = vec![0.0_f64; svd_ops_workspace_len(m, n)];
-    svd_effective_rank(&a_row, m, n, tol, &mut SolverWorkspace::new(&mut scratch)).unwrap_or(0)
+    let mut ws = OwnedByteArena::with_capacity(svd_decomposition_workspace_bytes(m, n));
+    effective_rank_with_workspace(matrix, tolerance, &mut ws).unwrap_or(0)
+}
+
+/// Computes rank-`k` Eckart-Young SVD approximation into `out_approx` (`nrows x ncols`) using `workspace` (`0` heap allocations).
+pub fn try_low_rank_approximation_with_workspace(
+    matrix: &DMatrix<f64>,
+    k: usize,
+    out_approx: &mut DMatrix<f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
+) -> Result<(), LinearAlgebraError> {
+    let (m, n) = matrix.shape();
+    if out_approx.shape() != (m, n) {
+        return Err(LinearAlgebraError::DimensionMismatch);
+    }
+    let mut cur = workspace.cursor();
+    let a_row = cur.alloc_slice::<f64>(m * n).map_err(LinalgError::from)?;
+    copy_dmatrix_to_row_major_slice(matrix, a_row);
+    let approx_row = cur.alloc_slice::<f64>(m * n).map_err(LinalgError::from)?;
+    let mut sub = cur.into_arena();
+    svd_low_rank_approx(a_row, m, n, k, approx_row, &mut sub)?;
+    for r in 0..m {
+        for c in 0..n {
+            out_approx[(r, c)] = approx_row[mat_idx(r, c, n)];
+        }
+    }
+    Ok(())
 }
 
 /// Checked Eckart-Young rank-`k` SVD matrix approximation returning [`LinearAlgebraError`] on `NaN` or non-convergence.
@@ -50,18 +102,10 @@ pub fn try_low_rank_approximation(
     k: usize,
 ) -> Result<DMatrix<f64>, LinearAlgebraError> {
     let (m, n) = matrix.shape();
-    let a_row = dmatrix_to_row_major(matrix);
-    let mut approx = vec![0.0_f64; m * n];
-    let mut scratch = vec![0.0_f64; svd_ops_workspace_len(m, n)];
-    svd_low_rank_approx(
-        &a_row,
-        m,
-        n,
-        k,
-        &mut approx,
-        &mut SolverWorkspace::new(&mut scratch),
-    )?;
-    Ok(DMatrix::from_row_slice(m, n, &approx))
+    let mut out_approx = DMatrix::zeros(m, n);
+    let mut ws = OwnedByteArena::with_capacity(svd_decomposition_workspace_bytes(m, n));
+    try_low_rank_approximation_with_workspace(matrix, k, &mut out_approx, &mut ws)?;
+    Ok(out_approx)
 }
 
 /// Computes a rank-`k` SVD approximation of `matrix` without panicking; prefer [`try_low_rank_approximation`] for checked error handling.
@@ -94,5 +138,15 @@ mod tests {
 
         let bad = DMatrix::from_row_slice(2, 2, &[1.0, f64::NAN, 0.0, 2.0]);
         assert!(try_low_rank_approximation(&bad, 1).is_err());
+
+        let mut out_approx = DMatrix::zeros(2, 2);
+        let mut ws = OwnedByteArena::with_capacity(svd_decomposition_workspace_bytes(2, 2));
+        let (rank, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            let r = effective_rank_with_workspace(&m, Some(1e-8), &mut ws).unwrap();
+            try_low_rank_approximation_with_workspace(&m, 1, &mut out_approx, &mut ws).unwrap();
+            r
+        });
+        assert_eq!(rank, 2);
+        assert_eq!(out_approx, approx);
     }
 }

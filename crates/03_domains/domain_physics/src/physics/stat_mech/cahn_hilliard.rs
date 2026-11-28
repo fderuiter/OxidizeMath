@@ -11,7 +11,7 @@ use engine_pde::{
 };
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::{
-    Dimension, SolverWorkspace, StepSize, fill_standard_normal,
+    Dimension, ScalarWorkspace, StepSize, fill_standard_normal,
 };
 use rand_core::RngCore;
 
@@ -227,7 +227,7 @@ impl CahnHilliard2D {
                 mobility_temp: self.mobility_temp,
             },
         );
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ScalarWorkspace::new(&mut self.scratch);
         stepper.try_step_cahn_hilliard_2d(
             &mut self.phi,
             self.width,
@@ -265,7 +265,7 @@ impl CahnHilliard2D {
             .into());
         }
         let stepper = SemiImplicitFourierStepper::try_new_2d(self.dx, self.dy)?;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ScalarWorkspace::new(&mut self.scratch);
         stepper.try_step_cahn_hilliard_2d(
             &mut self.phi,
             self.width,

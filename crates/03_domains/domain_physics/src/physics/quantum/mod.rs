@@ -110,7 +110,7 @@ pub use schrodinger::{
     time_evolution_operator_2x2_into, transmission_probability, try_evolve_state_in_place,
 };
 pub use spin::{set_spin_bloch_angles_in_place, sigma_x, sigma_y, sigma_z, spin_from_bloch_angles};
-pub use tridiagonal::{CrankNicolsonPropagator1D, SolverWorkspace, TridiagonalHamiltonian1D};
+pub use tridiagonal::{CrankNicolsonPropagator1D, TridiagonalHamiltonian1D, TridiagonalWorkspace};
 pub use types::{QuantumOperator, QuantumState};
 
 // [cite:quantum_mechanics]
@@ -141,6 +141,12 @@ pure_math::property_invariant_verification!(
 pure_math::formal_proof_verification!(
     module = "quantum",
     proof = "QuantumUnitarity.lean",
+    theorems = [
+        "normSq_nonneg",
+        "phase_rotate_norm_identity",
+        "unitary_scaled_norm_preserved",
+        "unitary_rounding_slack_bound",
+    ],
     test = {
         let h = construct_two_state_eigen_hamiltonian(-0.5, 1.5, 0.25);
         let psi0 = QuantumState::new(nalgebra::DVector::from_vec(vec![

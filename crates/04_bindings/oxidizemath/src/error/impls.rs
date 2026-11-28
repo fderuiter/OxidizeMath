@@ -163,6 +163,7 @@ impl Error {
     #[verified_engine::verified]
     fn classify(&self) -> Option<InnerErrorRef<'_>> {
         match self {
+            Self::Arena(err) => Some(InnerErrorRef::Domain(err)),
             Self::Diagnostic(err) => Some(InnerErrorRef::Domain(err)),
             Self::Diffeq(err) => Some(InnerErrorRef::Domain(err)),
             Self::Kalman(err) => Some(InnerErrorRef::Domain(err)),

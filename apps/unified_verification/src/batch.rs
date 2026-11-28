@@ -183,6 +183,7 @@ pub(crate) fn is_root_escalation_path(path: &str) -> bool {
             | "rustfmt.toml"
             | crate::whitelist::WHITELIST_FILE_NAME
     ) || path.starts_with(".cargo/")
+        || path.starts_with("proofs/")
 }
 
 pub(crate) fn select_touched_members(

@@ -74,6 +74,8 @@ use app::MathExplorerApp;
 
 #[cfg(test)]
 pub(crate) mod test_alloc;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) mod test_rasterizer;
 
 #[cfg(test)]
 #[global_allocator]
@@ -173,9 +175,9 @@ fn notify_js_boot_complete(window: Option<&web_sys::Window>) {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn bind_fallback_reload_listener(doc: &web_sys::Document) {
+fn bind_reload_button_by_id(doc: &web_sys::Document, id: &str) {
     use wasm_bindgen::JsCast;
-    let Some(reload_btn) = doc.get_element_by_id("webgl_reload_button") else {
+    let Some(reload_btn) = doc.get_element_by_id(id) else {
         return;
     };
     if reload_btn.get_attribute("data-reload-bound").as_deref() == Some("true") {
@@ -193,6 +195,12 @@ fn bind_fallback_reload_listener(doc: &web_sys::Document) {
 }
 
 #[cfg(target_arch = "wasm32")]
+pub(crate) fn bind_fallback_reload_listener(doc: &web_sys::Document) {
+    bind_reload_button_by_id(doc, "webgl_reload_button");
+    bind_reload_button_by_id(doc, "webgl_recovery_reload_button");
+}
+
+#[cfg(target_arch = "wasm32")]
 fn select_webgl_error_category(doc: &web_sys::Document) {
     if let Some(overlay) = doc.get_element_by_id("webgl_recovery_overlay") {
         let _ = overlay.set_attribute("aria-busy", "false");
@@ -200,6 +208,8 @@ fn select_webgl_error_category(doc: &web_sys::Document) {
         let _ = overlay.set_attribute("style", "display: none;");
     }
     if let Some(error_container) = doc.get_element_by_id("error_container") {
+        let _ = error_container.set_attribute("role", "region");
+        let _ = error_container.remove_attribute("aria-live");
         let _ = error_container.set_attribute("data-error-category", "webgl");
         let _ = error_container.set_attribute("data-error-active", "true");
     }
@@ -215,6 +225,9 @@ fn select_webgl_error_category(doc: &web_sys::Document) {
 
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn handle_webgl_failure(document: Option<&web_sys::Document>, error_info: &str) {
+    if document.is_some_and(is_error_boundary_active) {
+        return;
+    }
     accessibility::announce_status_with_priority(
         "WebGL initialization failed. Please enable hardware acceleration in your browser settings.",
         "assertive",
@@ -232,6 +245,8 @@ pub(crate) fn handle_webgl_failure(document: Option<&web_sys::Document>, error_i
         }
 
         if let Some(canvas) = doc.get_element_by_id("the_canvas_id") {
+            let _ = canvas.set_attribute("inert", "");
+            let _ = canvas.set_attribute("aria-hidden", "true");
             let _ = canvas.set_attribute("style", "display: none;");
         }
 

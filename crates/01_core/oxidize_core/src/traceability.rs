@@ -19,11 +19,14 @@ pub use cache::{AstCache, CachedRustFile};
 pub use debt_floors::{
     DensityFloors, DensityFloorsError, load_workspace_density_floors, parse_density_floors_toml,
 };
-pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
+pub use manifest::{
+    LeanProofBinding, TraceabilityManifestPayload, TraceabilityReport, VerificationCertificate,
+};
 pub use maturity::{EXPECTED_WORKSPACE_CRATES, MaturityRegistry};
 pub use proof_digest::{
     CANONICAL_PYRAMID_TIERS, CERTIFIED_SOLVER_COUNT, ProofDigestError, collect_lean4_proof_digests,
-    sha256_hex, strip_lean_comments, validate_lean_proof_source,
+    collect_lean4_proof_theorems, extract_lean_theorem_names, sha256_hex, strip_lean_comments,
+    validate_lean_proof_source,
 };
 #[cfg(feature = "ast-analysis")]
 pub use qualification::{
@@ -43,73 +46,7 @@ pub use scientific_metadata::theory::MaturityTier;
 
 use crate::vfs::VirtualFileSystem;
 #[cfg(feature = "ast-analysis")]
-use std::collections::HashSet;
-use std::collections::{BTreeMap, HashMap};
-
-/// Summary report produced by scanning workspace Rust modules against `traceability.toml` and `papers/*.tex`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct TraceabilityReport {
-    /// Total active Rust source files scanned.
-    pub scanned_files: usize,
-    /// `(source, target)` pairs referencing non-existent registry modules or LaTeX papers.
-    pub invalid_links: Vec<(String, String)>,
-    /// Manuscript `.tex` files unreferenced by any active entry in `traceability.toml`.
-    pub orphaned_papers: Vec<String>,
-    /// Formatted module paths lacking `[cite:...]` traceability annotations.
-    pub unlinked_code: Vec<String>,
-    /// Detailed `(module_path, file_path, line)` tuples for unlinked modules.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub unlinked_module_details: Vec<(String, String, usize)>,
-    /// Module files containing unverified functions without an explicit opt-out.
-    pub unverified_modules: Vec<String>,
-    /// Mapping from manuscript `.tex` filename to citing source files.
-    pub paper_coverage: HashMap<String, Vec<String>>,
-    /// Total functions discovered across scanned files.
-    pub total_funcs: usize,
-    /// Total assertions discovered across scanned files.
-    pub total_asserts: usize,
-    /// Total verified functions across scanned files.
-    pub verified_funcs: usize,
-    /// Total verified assertions across scanned files.
-    pub verified_asserts: usize,
-    /// Registry entries declaring an invalid verification tier mismatch.
-    pub invalid_tiers: Vec<String>,
-    /// Files where stochastic verification blocks used vacuous zero-initialized inputs.
-    pub vacuous_bypasses: Vec<String>,
-    /// Semantic integrity status per manuscript `.tex` file.
-    pub semantic_integrity_status: HashMap<String, String>,
-    /// Source line numbers for invalid `[cite:...]` links.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub invalid_link_lines: BTreeMap<String, usize>,
-    /// First unverified `(fn_name, line)` span per unverified module file.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub unverified_module_spans: BTreeMap<String, (String, usize)>,
-    /// Source line numbers for vacuous stochastic bypasses.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub vacuous_bypass_spans: BTreeMap<String, usize>,
-    /// Per-file `[verified_funcs, total_funcs]` counts.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub file_verified_counts: BTreeMap<String, [usize; 2]>,
-    /// Explicit crate-level maturity tiers loaded from `[crates]` in `traceability.toml`.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub crate_maturity_tiers: BTreeMap<String, String>,
-    /// Explicit module-level maturity tiers loaded from `[modules]` in `traceability.toml`.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub module_maturity_tiers: BTreeMap<String, String>,
-    /// Registered modules with non-vacuous deterministic `theory_verification!` contracts.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deterministic_contract_modules: Vec<String>,
-    /// Registered modules with `VerifiedAllocator` or `VerifiedEngine::run_verified` proofs.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub zero_alloc_modules: Vec<String>,
-    /// Per-tier maturity violations detected during AST traceability scanning.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub maturity_violations: Vec<String>,
-    /// Per-tier verification macro invocation counts across the 6-tier scientific verification pyramid.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub tier_counts: BTreeMap<String, usize>,
-}
+use std::collections::{HashMap, HashSet};
 
 /// Traceability scanner parameterized over a [`VirtualFileSystem`] backend.
 pub struct TraceabilityEngine<V: VirtualFileSystem> {

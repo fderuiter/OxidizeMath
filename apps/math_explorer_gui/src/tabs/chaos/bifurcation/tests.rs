@@ -148,12 +148,14 @@ fn test_bifurcation_animated_slider_sweep_under_16_67ms() {
 
     assert!(tool.r_min > initial_r_min);
     assert!(tool.request_generation >= 1);
+    assert!(tool.sweep_preview_points.len() <= MAX_SWEEP_PREVIEW_POINTS);
     assert!(
         min_elapsed < Duration::from_micros(16_670),
         "AnimatedSlider sweep at steps=2000 stalled UI thread: {min_elapsed:?}"
     );
 
     let datasets = tool.export_datasets();
+    assert_eq!(datasets[0].1.len(), tool.points.len());
     if let Ok(bytes) = egui_plot::export::export_custom_png(
         &datasets,
         &egui_plot::export::ExportOptions::default(),

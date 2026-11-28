@@ -20,8 +20,6 @@ mod tests;
 
 use crate::error::FitError;
 #[cfg(feature = "alloc")]
-use alloc::format;
-#[cfg(feature = "alloc")]
 use alloc::string::String;
 #[cfg(feature = "alloc")]
 use alloc::{vec, vec::Vec};
@@ -192,7 +190,7 @@ impl scientific_metadata::theory::TheoryDescribable for FitModel {
     }
 
     fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
-        scientific_metadata::theory::MaturityTier::Certified
+        scientific_metadata::theory::MaturityTier::Validated
     }
 }
 

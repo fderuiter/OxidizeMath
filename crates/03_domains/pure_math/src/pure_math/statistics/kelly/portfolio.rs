@@ -7,6 +7,7 @@ mod cholesky;
 use crate::error::KellyError;
 pub(crate) use cholesky::cholesky_into_flat;
 use cholesky::cholesky_solve_flat;
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use nalgebra::DMatrix;
 
 const PG_CONVERGENCE_TOL: f64 = 1e-10;
@@ -43,34 +44,54 @@ pub struct PortfolioKellySolution {
 /// Preallocated scratch buffers enabling zero-allocation covariance and projected-gradient Kelly solves.
 #[derive(Debug, Clone)]
 pub struct PortfolioKellyWorkspace {
-    pub(crate) sym_flat: Vec<f64>,
-    pub(crate) chol_flat: Vec<f64>,
-    pub(crate) excess: Vec<f64>,
-    pub(crate) grad: Vec<f64>,
-    pub(crate) candidate: Vec<f64>,
-    pub(crate) sort_scratch: Vec<f64>,
+    capacity: usize,
+    pub(crate) arena: OwnedByteArena,
+    pub(crate) sym_flat: ArenaRegion<f64>,
+    pub(crate) chol_flat: ArenaRegion<f64>,
+    pub(crate) excess: ArenaRegion<f64>,
+    pub(crate) grad: ArenaRegion<f64>,
+    pub(crate) candidate: ArenaRegion<f64>,
+    pub(crate) sort_scratch: ArenaRegion<f64>,
 }
 
 impl PortfolioKellyWorkspace {
-    /// Allocates reusable scratch storage for portfolios up to `max_assets` legs.
+    /// Fallibly allocates reusable scratch storage in a single [`OwnedByteArena`] for up to `max_assets` legs.
+    #[verified_engine::verified]
+    pub fn try_with_capacity(max_assets: usize) -> Result<Self, math_memory::ArenaError> {
+        let n = max_assets.max(1);
+        let nn = n
+            .checked_mul(n)
+            .ok_or(math_memory::ArenaError::ArithmeticOverflow)?;
+        let mut layout = ArenaLayout::new();
+        let sym_flat = layout.reserve::<f64>(nn)?;
+        let chol_flat = layout.reserve::<f64>(nn)?;
+        let excess = layout.reserve::<f64>(n)?;
+        let grad = layout.reserve::<f64>(n)?;
+        let candidate = layout.reserve::<f64>(n)?;
+        let sort_scratch = layout.reserve::<f64>(n)?;
+        Ok(Self {
+            capacity: n,
+            arena: OwnedByteArena::try_from_layout(&layout)?,
+            sym_flat,
+            chol_flat,
+            excess,
+            grad,
+            candidate,
+            sort_scratch,
+        })
+    }
+
+    /// Allocates reusable scratch storage in a single [`OwnedByteArena`] for portfolios up to `max_assets` legs.
     #[verified_engine::verified]
     pub fn with_capacity(max_assets: usize) -> Self {
-        let n = max_assets.max(1);
-        Self {
-            sym_flat: vec![0.0; n * n],
-            chol_flat: vec![0.0; n * n],
-            excess: vec![0.0; n],
-            grad: vec![0.0; n],
-            candidate: vec![0.0; n],
-            sort_scratch: vec![0.0; n],
-        }
+        Self::try_with_capacity(max_assets).expect("PortfolioKellyWorkspace::with_capacity failed")
     }
 
     pub(crate) fn check_capacity(&self, n: usize) -> Result<(), KellyError> {
-        if self.excess.len() < n || self.sym_flat.len() < n * n || self.chol_flat.len() < n * n {
+        if self.capacity < n {
             return Err(KellyError::DimensionMismatch {
                 expected: n,
-                actual: self.excess.len(),
+                actual: self.capacity,
             });
         }
         Ok(())
@@ -100,17 +121,14 @@ pub(crate) fn validate_covariance_inputs(
             reason: "expected returns and risk-free rate must be finite",
         });
     }
+    let tol = math_commons::registry::TOLERANCE_STANDARD;
     for i in 0..n {
         if !covariance[(i, i)].is_finite() || covariance[(i, i)] <= 0.0 {
             return Err(KellyError::NotPositiveDefinite);
         }
         for j in (i + 1)..n {
-            let a = covariance[(i, j)];
-            let b = covariance[(j, i)];
-            if !a.is_finite()
-                || !b.is_finite()
-                || (a - b).abs() > math_commons::registry::TOLERANCE_STANDARD
-            {
+            let (a, b) = (covariance[(i, j)], covariance[(j, i)]);
+            if !a.is_finite() || !b.is_finite() || (a - b).abs() > tol {
                 return Err(KellyError::InvalidParameter {
                     reason: "covariance matrix must be finite and symmetric",
                 });
@@ -154,21 +172,17 @@ fn compute_metrics_unchecked(
     covariance: &DMatrix<f64>,
     risk_free_rate: f64,
 ) -> PortfolioKellyMetrics {
-    let n = weights.len();
-    let mut gross_leverage = 0.0;
-    let mut net_leverage = 0.0;
-    let mut expected_excess_return = 0.0;
-    let mut portfolio_variance = 0.0;
-
-    for i in 0..n {
-        let wi = weights[i];
+    let (mut gross_leverage, mut net_leverage) = (0.0, 0.0);
+    let (mut expected_excess_return, mut portfolio_variance) = (0.0, 0.0);
+    for (i, &wi) in weights.iter().enumerate() {
         gross_leverage += wi.abs();
         net_leverage += wi;
         expected_excess_return += wi * (expected_returns[i] - risk_free_rate);
-        let mut row_dot = 0.0;
-        for (j, &wj) in weights.iter().enumerate() {
-            row_dot += covariance[(i, j)] * wj;
-        }
+        let row_dot: f64 = weights
+            .iter()
+            .enumerate()
+            .map(|(j, &wj)| covariance[(i, j)] * wj)
+            .sum();
         portfolio_variance += wi * row_dot;
     }
     let clean_var = portfolio_variance.max(0.0);
@@ -201,21 +215,17 @@ pub fn solve_unconstrained_kelly_into(
         });
     }
     workspace.check_capacity(n)?;
-    cholesky_into_flat(
-        covariance,
-        n,
-        &mut workspace.sym_flat,
-        &mut workspace.chol_flat,
-    )?;
-    for (dst, &mu_i) in workspace.excess[..n].iter_mut().zip(expected_returns) {
+    let (sym_reg, chol_reg, exc_reg) = (workspace.sym_flat, workspace.chol_flat, workspace.excess);
+    let mut cur = workspace.arena.raw_cursor();
+    let sym_flat = cur.region_mut(sym_reg);
+    let chol_flat = cur.region_mut(chol_reg);
+    let excess = cur.region_mut(exc_reg);
+
+    cholesky_into_flat(covariance, n, sym_flat, chol_flat)?;
+    for (dst, &mu_i) in excess[..n].iter_mut().zip(expected_returns) {
         *dst = mu_i - risk_free_rate;
     }
-    cholesky_solve_flat(
-        &workspace.chol_flat[..n * n],
-        &workspace.excess[..n],
-        out_weights,
-        n,
-    )?;
+    cholesky_solve_flat(&chol_flat[..n * n], &excess[..n], out_weights, n)?;
 
     Ok(compute_metrics_unchecked(
         out_weights,
@@ -263,12 +273,16 @@ pub fn independent_kelly_into(
         });
     }
     workspace.check_capacity(n)?;
-    cholesky_into_flat(
-        covariance,
-        n,
-        &mut workspace.sym_flat,
-        &mut workspace.chol_flat,
-    )?;
+    {
+        let (sym_reg, chol_reg) = (workspace.sym_flat, workspace.chol_flat);
+        let mut cur = workspace.arena.raw_cursor();
+        cholesky_into_flat(
+            covariance,
+            n,
+            cur.region_mut(sym_reg),
+            cur.region_mut(chol_reg),
+        )?;
+    }
     for i in 0..n {
         out_weights[i] = (expected_returns[i] - risk_free_rate) / covariance[(i, i)];
     }
@@ -358,6 +372,14 @@ fn run_projected_gradient_loop(
     }
     let step = 0.95 / l_bound.max(1e-12);
 
+    let exc_reg = workspace.excess;
+    let cand_reg = workspace.candidate;
+    let sort_reg = workspace.sort_scratch;
+    let mut cur = workspace.arena.raw_cursor();
+    let excess = cur.region_mut(exc_reg);
+    let candidate = cur.region_mut(cand_reg);
+    let sort_scratch = cur.region_mut(sort_reg);
+
     out_weights.fill(0.0);
     for _ in 0..DEFAULT_PG_MAX_ITERS {
         for i in 0..n {
@@ -365,16 +387,16 @@ fn run_projected_gradient_loop(
             for (j, &wj) in out_weights.iter().enumerate() {
                 sigma_w += covariance[(i, j)] * wj;
             }
-            workspace.candidate[i] = out_weights[i] + step * (workspace.excess[i] - sigma_w);
+            candidate[i] = out_weights[i] + step * (excess[i] - sigma_w);
         }
         project_nonneg_capped_simplex(
-            &mut workspace.candidate[..n],
+            &mut candidate[..n],
             max_gross_leverage,
-            &mut workspace.sort_scratch[..n],
+            &mut sort_scratch[..n],
         );
 
         let mut max_delta = 0.0_f64;
-        for (dst, &cand) in out_weights.iter_mut().zip(workspace.candidate[..n].iter()) {
+        for (dst, &cand) in out_weights.iter_mut().zip(candidate[..n].iter()) {
             max_delta = max_delta.max((cand - *dst).abs());
             *dst = cand;
         }
@@ -409,16 +431,17 @@ pub fn solve_long_only_kelly_into(
         });
     }
     workspace.check_capacity(n)?;
-    cholesky_into_flat(
-        covariance,
-        n,
-        &mut workspace.sym_flat,
-        &mut workspace.chol_flat,
-    )?;
-    for (dst, &mu_i) in workspace.excess[..n].iter_mut().zip(expected_returns) {
-        *dst = mu_i - risk_free_rate;
+    {
+        let (sym_reg, chol_reg, exc_reg) =
+            (workspace.sym_flat, workspace.chol_flat, workspace.excess);
+        let mut cur = workspace.arena.raw_cursor();
+        let (sym_flat, chol_flat) = (cur.region_mut(sym_reg), cur.region_mut(chol_reg));
+        let excess = cur.region_mut(exc_reg);
+        cholesky_into_flat(covariance, n, sym_flat, chol_flat)?;
+        for (dst, &mu_i) in excess[..n].iter_mut().zip(expected_returns) {
+            *dst = mu_i - risk_free_rate;
+        }
     }
-
     run_projected_gradient_loop(covariance, n, max_gross_leverage, out_weights, workspace);
     Ok(compute_metrics_unchecked(
         out_weights,

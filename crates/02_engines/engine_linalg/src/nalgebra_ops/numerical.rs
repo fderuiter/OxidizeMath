@@ -2,32 +2,23 @@
 //!
 //! Provides `DMatrix` / `DVector` checked linear system, pivoted Householder QR least-squares
 //! (with SVD fallback), Cholesky, Tikhonov, Krylov, and Moore-Penrose pseudoinverse solvers
-//! backed by `#![no_std]` [`crate`].
+//! backed by `#![no_std]` [`crate`] and [`math_memory`].
 // [cite:engine_linalg]
 // [cite:advanced_linear_algebra]
 
-use alloc::vec;
-use alloc::vec::Vec;
+#[path = "numerical_workspace.rs"]
+pub mod workspace;
 
-use crate::{
-    CsrMatrixView, SolverWorkspace, cg_solve, cg_workspace_len, cholesky_solve,
-    cholesky_workspace_len, gmres_solve, gmres_workspace_len, lu_solve, lu_workspace_len,
-    qr_or_svd_solve, qr_or_svd_workspace_len, svd_ops_workspace_len, svd_pseudoinverse,
-    tikhonov_solve, tikhonov_workspace_len,
-};
+use math_memory::OwnedByteArena;
 pub use math_scalars::LinearAlgebraError;
 use nalgebra::{DMatrix, DVector};
 
-pub(crate) fn dmatrix_to_row_major(a: &DMatrix<f64>) -> Vec<f64> {
-    let (m, n) = a.shape();
-    let mut out = Vec::with_capacity(m * n);
-    for r in 0..m {
-        for c in 0..n {
-            out.push(a[(r, c)]);
-        }
-    }
-    out
-}
+pub use workspace::{
+    linalg_solve_workspace_bytes, solve_cholesky_system_with_workspace,
+    solve_conjugate_gradient_with_workspace, solve_gmres_restarted_with_workspace,
+    solve_linear_system_with_workspace, solve_normal_equation_with_workspace,
+    solve_tikhonov_system_with_workspace, try_moore_penrose_pseudoinverse_with_workspace,
+};
 
 /// Solves the square dense linear system $A\mathbf{x} = \mathbf{b}$ via partial-pivoted LU factorization $PA = LU$ in [`crate`].
 ///
@@ -46,22 +37,10 @@ pub fn solve_linear_system(
     if m != n || n != b.len() {
         return Err(LinearAlgebraError::DimensionMismatch);
     }
-    if n == 0 {
-        return Ok(DVector::zeros(0));
-    }
-    let a_row = dmatrix_to_row_major(a);
-    let mut x = vec![0.0_f64; n];
-    let mut pivots = vec![0_usize; n];
-    let mut scratch = vec![0.0_f64; lu_workspace_len(n)];
-    lu_solve(
-        &a_row,
-        b.as_slice(),
-        &mut x,
-        n,
-        &mut pivots,
-        &mut SolverWorkspace::new(&mut scratch),
-    )?;
-    Ok(DVector::from_vec(x))
+    let mut out_x = DVector::zeros(n);
+    let mut ws = OwnedByteArena::with_capacity(linalg_solve_workspace_bytes(m, n, 1));
+    solve_linear_system_with_workspace(a, b, &mut out_x, &mut ws)?;
+    Ok(out_x)
 }
 
 /// Solves linear least squares $\min_{\mathbf{x}} \|A\mathbf{x} - \mathbf{b}\|_2$ via column-pivoted Householder QR with SVD fallback.
@@ -81,26 +60,10 @@ pub fn solve_normal_equation(
     if m != b.len() {
         return Err(LinearAlgebraError::DimensionMismatch);
     }
-    if m == 0 || n == 0 {
-        return Err(LinearAlgebraError::SingularMatrix);
-    }
-    let a_row = dmatrix_to_row_major(a);
-    let mut x = vec![0.0_f64; n];
-    let mut perm = vec![0_usize; n];
-    let mut scratch = vec![0.0_f64; qr_or_svd_workspace_len(m, n)];
-    let rank = qr_or_svd_solve(
-        &a_row,
-        m,
-        n,
-        b.as_slice(),
-        &mut x,
-        &mut perm,
-        &mut SolverWorkspace::new(&mut scratch),
-    )?;
-    if rank == 0 {
-        return Err(LinearAlgebraError::SingularMatrix);
-    }
-    Ok(DVector::from_vec(x))
+    let mut out_x = DVector::zeros(n);
+    let mut ws = OwnedByteArena::with_capacity(linalg_solve_workspace_bytes(m, n, 1));
+    solve_normal_equation_with_workspace(a, b, &mut out_x, &mut ws)?;
+    Ok(out_x)
 }
 
 /// Checked Moore-Penrose pseudoinverse $A^+ = V \Sigma^+ U^T$ returning [`LinearAlgebraError`] on `NaN` or non-convergence.
@@ -108,24 +71,11 @@ pub fn try_moore_penrose_pseudoinverse(
     matrix: &DMatrix<f64>,
     epsilon: f64,
 ) -> Result<DMatrix<f64>, LinearAlgebraError> {
-    if !epsilon.is_finite() || epsilon < 0.0 {
-        return Err(LinearAlgebraError::InvalidInput(
-            "singular value tolerance epsilon must be finite and non-negative",
-        ));
-    }
     let (m, n) = matrix.shape();
-    let a_row = dmatrix_to_row_major(matrix);
-    let mut pinv = vec![0.0_f64; n * m];
-    let mut scratch = vec![0.0_f64; svd_ops_workspace_len(m, n)];
-    svd_pseudoinverse(
-        &a_row,
-        m,
-        n,
-        epsilon,
-        &mut pinv,
-        &mut SolverWorkspace::new(&mut scratch),
-    )?;
-    Ok(DMatrix::from_row_slice(n, m, &pinv))
+    let mut out_pinv = DMatrix::zeros(n, m);
+    let mut ws = OwnedByteArena::with_capacity(linalg_solve_workspace_bytes(m, n, 1));
+    try_moore_penrose_pseudoinverse_with_workspace(matrix, epsilon, &mut out_pinv, &mut ws)?;
+    Ok(out_pinv)
 }
 
 /// Calculates the Moore-Penrose Pseudoinverse ($J^{\dagger}$); prefer [`try_moore_penrose_pseudoinverse`] for checked error handling.
@@ -151,17 +101,10 @@ pub fn solve_cholesky_system(
     if m != n || n != b.len() {
         return Err(LinearAlgebraError::DimensionMismatch);
     }
-    let a_row = dmatrix_to_row_major(a);
-    let mut x = vec![0.0_f64; n];
-    let mut scratch = vec![0.0_f64; cholesky_workspace_len(n)];
-    cholesky_solve(
-        &a_row,
-        b.as_slice(),
-        &mut x,
-        n,
-        &mut SolverWorkspace::new(&mut scratch),
-    )?;
-    Ok(DVector::from_vec(x))
+    let mut out_x = DVector::zeros(n);
+    let mut ws = OwnedByteArena::with_capacity(linalg_solve_workspace_bytes(m, n, 1));
+    solve_cholesky_system_with_workspace(a, b, &mut out_x, &mut ws)?;
+    Ok(out_x)
 }
 
 /// Solves Tikhonov ridge regression $\min_{\mathbf{x}} \|A\mathbf{x} - \mathbf{b}\|_2^2 + \lambda^2 \|\mathbf{x}\|_2^2$ via SVD filter factors $\sigma_i / (\sigma_i^2 + \lambda^2)$.
@@ -182,45 +125,10 @@ pub fn solve_tikhonov_system(
     if m != b.len() {
         return Err(LinearAlgebraError::DimensionMismatch);
     }
-    let a_row = dmatrix_to_row_major(a);
-    let mut x = vec![0.0_f64; n];
-    let mut scratch = vec![0.0_f64; tikhonov_workspace_len(m, n)];
-    tikhonov_solve(
-        &a_row,
-        m,
-        n,
-        b.as_slice(),
-        lambda,
-        &mut x,
-        &mut SolverWorkspace::new(&mut scratch),
-    )?;
-    Ok(DVector::from_vec(x))
-}
-
-type CsrOwnedParts = (Vec<usize>, Vec<usize>, Vec<f64>);
-
-fn dense_to_csr_parts(a: &DMatrix<f64>) -> Result<CsrOwnedParts, LinearAlgebraError> {
-    let (m, n) = a.shape();
-    let mut row_ptr = Vec::with_capacity(m + 1);
-    let mut col_ind = Vec::new();
-    let mut values = Vec::new();
-    row_ptr.push(0);
-    for r in 0..m {
-        for c in 0..n {
-            let v = a[(r, c)];
-            if !v.is_finite() {
-                return Err(LinearAlgebraError::InvalidInput(
-                    "matrix contains non-finite entry",
-                ));
-            }
-            if v != 0.0 {
-                col_ind.push(c);
-                values.push(v);
-            }
-        }
-        row_ptr.push(values.len());
-    }
-    Ok((row_ptr, col_ind, values))
+    let mut out_x = DVector::zeros(n);
+    let mut ws = OwnedByteArena::with_capacity(linalg_solve_workspace_bytes(m, n, 1));
+    solve_tikhonov_system_with_workspace(a, b, lambda, &mut out_x, &mut ws)?;
+    Ok(out_x)
 }
 
 /// Solves an SPD linear system $A\mathbf{x} = \mathbf{b}$ via preallocated Conjugate Gradient minimization of $\frac{1}{2}\mathbf{x}^\top A\mathbf{x} - \mathbf{b}^\top \mathbf{x}$.
@@ -242,19 +150,10 @@ pub fn solve_conjugate_gradient(
     if m != n || n != b.len() {
         return Err(LinearAlgebraError::DimensionMismatch);
     }
-    let (row_ptr, col_ind, values) = dense_to_csr_parts(a)?;
-    let csr = CsrMatrixView::new(n, n, &row_ptr, &col_ind, &values)?;
-    let mut x = vec![0.0_f64; n];
-    let mut scratch = vec![0.0_f64; cg_workspace_len(n)];
-    cg_solve(
-        &csr,
-        b.as_slice(),
-        &mut x,
-        tol,
-        max_iter,
-        &mut SolverWorkspace::new(&mut scratch),
-    )?;
-    Ok(DVector::from_vec(x))
+    let mut out_x = DVector::zeros(n);
+    let mut ws = OwnedByteArena::with_capacity(linalg_solve_workspace_bytes(m, n, 1));
+    solve_conjugate_gradient_with_workspace(a, b, tol, max_iter, &mut out_x, &mut ws)?;
+    Ok(out_x)
 }
 
 /// Solves a general square linear system $A\mathbf{x} = \mathbf{b}$ via Arnoldi-Givens restarted $\text{GMRES}(m)$ minimizing $\|\mathbf{b} - A\mathbf{x}_k\|_2$.
@@ -277,20 +176,10 @@ pub fn solve_gmres_restarted(
     if m != n || n != b.len() {
         return Err(LinearAlgebraError::DimensionMismatch);
     }
-    let (row_ptr, col_ind, values) = dense_to_csr_parts(a)?;
-    let csr = CsrMatrixView::new(n, n, &row_ptr, &col_ind, &values)?;
-    let mut x = vec![0.0_f64; n];
-    let mut scratch = vec![0.0_f64; gmres_workspace_len(n, restart)];
-    gmres_solve(
-        &csr,
-        b.as_slice(),
-        &mut x,
-        restart,
-        tol,
-        max_restarts,
-        &mut SolverWorkspace::new(&mut scratch),
-    )?;
-    Ok(DVector::from_vec(x))
+    let mut out_x = DVector::zeros(n);
+    let mut ws = OwnedByteArena::with_capacity(linalg_solve_workspace_bytes(m, n, restart));
+    solve_gmres_restarted_with_workspace(a, b, restart, tol, max_restarts, &mut out_x, &mut ws)?;
+    Ok(out_x)
 }
 
 #[cfg(test)]
@@ -336,6 +225,33 @@ mod tests {
         assert!((x_chol[0] - 1.0).abs() < 1e-11);
         assert!((x_cg[1] - 1.0).abs() < 1e-11);
         assert!((x_gm[0] - 1.0).abs() < 1e-11);
+    }
+
+    #[test]
+    fn test_all_seven_with_workspace_solvers_zero_heap_allocations() {
+        let spd = DMatrix::from_row_slice(3, 3, &[4.0, 1.0, 0.2, 1.0, 3.5, 0.4, 0.2, 0.4, 2.5]);
+        let rhs = DVector::from_column_slice(&[5.2, 4.9, 3.1]);
+        let tall = DMatrix::from_row_slice(4, 2, &[1.0, 0.0, 1.0, 1.0, 1.0, 2.0, 1.0, 3.0]);
+        let tall_b = DVector::from_column_slice(&[1.0, 2.0, 3.0, 4.0]);
+        let mut out3 = DVector::zeros(3);
+        let mut out2 = DVector::zeros(2);
+        let mut pinv = DMatrix::zeros(2, 4);
+        let mut ws = OwnedByteArena::with_capacity(linalg_solve_workspace_bytes(4, 4, 3));
+
+        let ((), _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            solve_linear_system_with_workspace(&spd, &rhs, &mut out3, &mut ws).unwrap();
+            solve_normal_equation_with_workspace(&tall, &tall_b, &mut out2, &mut ws).unwrap();
+            try_moore_penrose_pseudoinverse_with_workspace(&tall, 1e-12, &mut pinv, &mut ws)
+                .unwrap();
+            solve_cholesky_system_with_workspace(&spd, &rhs, &mut out3, &mut ws).unwrap();
+            solve_tikhonov_system_with_workspace(&tall, &tall_b, 1e-4, &mut out2, &mut ws).unwrap();
+            solve_conjugate_gradient_with_workspace(&spd, &rhs, 1e-12, 30, &mut out3, &mut ws)
+                .unwrap();
+            solve_gmres_restarted_with_workspace(&spd, &rhs, 3, 1e-12, 10, &mut out3, &mut ws)
+                .unwrap();
+        });
+        assert!((out3[0] - 1.0).abs() < 1e-11);
+        assert!((out2[1] - 1.0).abs() < 1e-5);
     }
 
     #[test]

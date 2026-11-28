@@ -1,8 +1,11 @@
 //! Iterative Tarjan strongly connected components for discrete-time Markov chains.
 
 use super::MarkovChain;
+use math_memory::{ArenaLayout, ArenaRegion, FlagRegion, OwnedByteArena};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
+
+const UNVISITED: usize = usize::MAX;
 
 /// A strongly connected communicating class of a Markov chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,52 +18,158 @@ pub struct CommunicatingClass {
 
 struct TarjanWorkspace {
     next_index: usize,
-    indices: Vec<Option<usize>>,
-    lowlink: Vec<usize>,
-    on_stack: Vec<bool>,
-    tarjan_stack: Vec<usize>,
-    call_stack: Vec<(usize, usize)>,
-    sccs: Vec<Vec<usize>>,
+    tarjan_len: usize,
+    call_len: usize,
+    scc_members_len: usize,
+    scc_count: usize,
+    arena: OwnedByteArena,
+    indices: ArenaRegion<usize>,
+    lowlink: ArenaRegion<usize>,
+    on_stack: FlagRegion,
+    tarjan_stack: ArenaRegion<usize>,
+    call_stack: ArenaRegion<[usize; 2]>,
+    scc_members: ArenaRegion<usize>,
+    scc_spans: ArenaRegion<[usize; 2]>,
+    class_of: ArenaRegion<usize>,
 }
 
 impl TarjanWorkspace {
     fn new(n: usize) -> Self {
+        let mut layout = ArenaLayout::new();
+        let indices = layout.reserve::<usize>(n).expect("Tarjan indices layout");
+        let lowlink = layout.reserve::<usize>(n).expect("Tarjan lowlink layout");
+        let on_stack = layout.reserve_flags(n).expect("Tarjan on_stack layout");
+        let tarjan_stack = layout.reserve::<usize>(n).expect("Tarjan stack layout");
+        let call_stack = layout
+            .reserve::<[usize; 2]>(n)
+            .expect("Tarjan call_stack layout");
+        let scc_members = layout
+            .reserve::<usize>(n)
+            .expect("Tarjan scc_members layout");
+        let scc_spans = layout
+            .reserve::<[usize; 2]>(n)
+            .expect("Tarjan scc_spans layout");
+        let class_of = layout.reserve::<usize>(n).expect("Tarjan class_of layout");
+        let mut arena = OwnedByteArena::from_layout(&layout);
+        arena.region_slice_mut(indices).fill(UNVISITED);
         Self {
             next_index: 0,
-            indices: vec![None; n],
-            lowlink: vec![0; n],
-            on_stack: vec![false; n],
-            tarjan_stack: Vec::with_capacity(n),
-            call_stack: Vec::with_capacity(n),
-            sccs: Vec::new(),
+            tarjan_len: 0,
+            call_len: 0,
+            scc_members_len: 0,
+            scc_count: 0,
+            arena,
+            indices,
+            lowlink,
+            on_stack,
+            tarjan_stack,
+            call_stack,
+            scc_members,
+            scc_spans,
+            class_of,
         }
+    }
+
+    #[inline]
+    fn is_unvisited(&self, v: usize) -> bool {
+        self.arena.region_slice(self.indices)[v] == UNVISITED
+    }
+
+    fn pop_call(&mut self) -> Option<(usize, usize)> {
+        if self.call_len == 0 {
+            return None;
+        }
+        self.call_len -= 1;
+        let frame = self.arena.region_slice(self.call_stack)[self.call_len];
+        Some((frame[0], frame[1]))
+    }
+
+    fn push_call(&mut self, v: usize, next_w: usize) {
+        let slot = self.call_len;
+        self.call_len += 1;
+        self.arena.region_slice_mut(self.call_stack)[slot] = [v, next_w];
     }
 
     fn discover(&mut self, v: usize) {
         let idx = self.next_index;
         self.next_index += 1;
-        self.indices[v] = Some(idx);
-        self.lowlink[v] = idx;
-        self.tarjan_stack.push(v);
-        self.on_stack[v] = true;
-        self.call_stack.push((v, 0));
+        let ind_reg = self.indices;
+        let low_reg = self.lowlink;
+        let flag_reg = self.on_stack;
+        let t_reg = self.tarjan_stack;
+        let c_reg = self.call_stack;
+        let mut cur = self.arena.raw_cursor();
+        let indices = cur.region_mut(ind_reg);
+        let lowlink = cur.region_mut(low_reg);
+        let mut on_stack = cur.flags_mut(flag_reg);
+        let tarjan_stack = cur.region_mut(t_reg);
+        let call_stack = cur.region_mut(c_reg);
+        indices[v] = idx;
+        lowlink[v] = idx;
+        tarjan_stack[self.tarjan_len] = v;
+        self.tarjan_len += 1;
+        on_stack.set(v, true);
+        call_stack[self.call_len] = [v, 0];
+        self.call_len += 1;
+    }
+
+    fn update_back_edge(&mut self, v: usize, w: usize) {
+        if self.arena.flag_get(self.on_stack, w) {
+            let ind_reg = self.indices;
+            let low_reg = self.lowlink;
+            let mut cur = self.arena.raw_cursor();
+            let indices = cur.region_mut(ind_reg);
+            let lowlink = cur.region_mut(low_reg);
+            let w_idx = if indices[w] == UNVISITED {
+                lowlink[v]
+            } else {
+                indices[w]
+            };
+            lowlink[v] = lowlink[v].min(w_idx);
+        }
     }
 
     fn finish_vertex(&mut self, v: usize) {
-        if Some(self.lowlink[v]) == self.indices[v] {
-            let mut component = Vec::new();
-            while let Some(u) = self.tarjan_stack.pop() {
-                self.on_stack[u] = false;
-                component.push(u);
+        let ind_reg = self.indices;
+        let low_reg = self.lowlink;
+        let flag_reg = self.on_stack;
+        let t_reg = self.tarjan_stack;
+        let c_reg = self.call_stack;
+        let m_reg = self.scc_members;
+        let s_reg = self.scc_spans;
+        let cl_reg = self.class_of;
+        let mut cur = self.arena.raw_cursor();
+        let indices = cur.region_mut(ind_reg);
+        let lowlink = cur.region_mut(low_reg);
+        let mut on_stack = cur.flags_mut(flag_reg);
+        let tarjan_stack = cur.region_mut(t_reg);
+        let call_stack = cur.region_mut(c_reg);
+        let scc_members = cur.region_mut(m_reg);
+        let scc_spans = cur.region_mut(s_reg);
+        let class_of = cur.region_mut(cl_reg);
+
+        if lowlink[v] == indices[v] {
+            let start = self.scc_members_len;
+            let cid = self.scc_count;
+            while self.tarjan_len > 0 {
+                self.tarjan_len -= 1;
+                let u = tarjan_stack[self.tarjan_len];
+                on_stack.set(u, false);
+                class_of[u] = cid;
+                scc_members[self.scc_members_len] = u;
+                self.scc_members_len += 1;
                 if u == v {
                     break;
                 }
             }
-            component.sort_unstable();
-            self.sccs.push(component);
+            let end = self.scc_members_len;
+            scc_members[start..end].sort_unstable();
+            scc_spans[cid] = [start, end];
+            self.scc_count += 1;
         }
-        if let Some(&(parent, _)) = self.call_stack.last() {
-            self.lowlink[parent] = self.lowlink[parent].min(self.lowlink[v]);
+        if self.call_len > 0 {
+            let parent = call_stack[self.call_len - 1][0];
+            lowlink[parent] = lowlink[parent].min(lowlink[v]);
         }
     }
 }
@@ -78,13 +187,13 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
         let mut ws = TarjanWorkspace::new(n);
 
         for start in 0..n {
-            if ws.indices[start].is_none() {
+            if ws.is_unvisited(start) {
                 ws.discover(start);
                 self.drain_tarjan_component(&mut ws, eps);
             }
         }
 
-        let mut classes = self.classify_sccs(ws.sccs, eps);
+        let mut classes = self.classify_sccs(&ws, eps);
         classes.sort_by_key(|c| c.states.first().copied().unwrap_or(usize::MAX));
         debug_assert!(!classes.is_empty() || n == 0);
         Ok(classes)
@@ -119,16 +228,15 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     #[verified_engine::verified]
     fn drain_tarjan_component(&self, ws: &mut TarjanWorkspace, eps: T) {
         let n = self.num_states();
-        while let Some((v, next_w)) = ws.call_stack.pop() {
+        while let Some((v, next_w)) = ws.pop_call() {
             let mut advanced = false;
             for w in next_w..n {
                 if self.transition_matrix[(v, w)] > eps {
-                    ws.call_stack.push((v, w + 1));
-                    if ws.indices[w].is_none() {
+                    ws.push_call(v, w + 1);
+                    if ws.is_unvisited(w) {
                         ws.discover(w);
-                    } else if ws.on_stack[w] {
-                        let w_idx = ws.indices[w].unwrap_or(ws.lowlink[v]);
-                        ws.lowlink[v] = ws.lowlink[v].min(w_idx);
+                    } else {
+                        ws.update_back_edge(v, w);
                     }
                     advanced = true;
                     break;
@@ -141,22 +249,24 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     }
 
     #[verified_engine::verified]
-    fn classify_sccs(&self, sccs: Vec<Vec<usize>>, eps: T) -> Vec<CommunicatingClass> {
+    fn classify_sccs(&self, ws: &TarjanWorkspace, eps: T) -> Vec<CommunicatingClass> {
         let n = self.num_states();
-        let mut class_of = vec![0_usize; n];
-        for (cid, states) in sccs.iter().enumerate() {
-            for &s in states {
-                class_of[s] = cid;
-            }
-        }
+        let members = ws.arena.region_slice(ws.scc_members);
+        let spans = &ws.arena.region_slice(ws.scc_spans)[..ws.scc_count];
+        let class_of = ws.arena.region_slice(ws.class_of);
 
-        sccs.into_iter()
+        spans
+            .iter()
             .enumerate()
-            .map(|(cid, states)| {
-                let is_closed = states.iter().all(|&u| {
+            .map(|(cid, &[start, end])| {
+                let slice = &members[start..end];
+                let is_closed = slice.iter().all(|&u| {
                     (0..n).all(|v| class_of[v] == cid || self.transition_matrix[(u, v)] <= eps)
                 });
-                CommunicatingClass { states, is_closed }
+                CommunicatingClass {
+                    states: slice.to_vec(),
+                    is_closed,
+                }
             })
             .collect()
     }

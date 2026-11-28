@@ -29,6 +29,10 @@ pub use euler_maruyama::EulerMaruyamaSolver;
 pub use jump::ssa_sample_event;
 #[cfg(feature = "nalgebra")]
 pub use kalman::{KalmanFilter, KalmanFilterBuilder, KalmanModel, KalmanSystem};
+pub use math_commons::math_kernel::types::ScalarWorkspace;
+#[cfg(feature = "alloc")]
+pub use math_memory::OwnedByteArena;
+pub use math_memory::{ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, SolverWorkspace};
 pub use math_rng::{BASE_SEED, OxidizeRng};
 pub use milstein::MilsteinSolver;
 pub use sriw1::{CorrelatedWienerIncrement, Sriw1Solver};
@@ -36,45 +40,6 @@ pub use system::{
     LangevinSystem, SdeSystem, StochasticCalculus, eval_ito_effective_drift,
     try_eval_ito_effective_drift,
 };
-
-#[cfg(feature = "alloc")]
-/// Optional `alloc`-backed scratch buffer owner that lends zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) views.
-#[derive(Debug, Clone)]
-pub struct OwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
-    buf: alloc::vec::Vec<T>,
-}
-
-#[cfg(feature = "alloc")]
-impl<T: math_commons::math_kernel::types::Scalar> OwnedWorkspace<T> {
-    /// Fallibly allocates a reusable scratch buffer of `capacity` zero-initialized scalars.
-    ///
-    /// # Errors
-    /// Returns [`DiffeqError::WorkspaceAllocationFailed`] if the allocator rejects `capacity`.
-    #[verified_engine::verified]
-    pub fn try_with_capacity(capacity: usize) -> Result<Self, DiffeqError> {
-        let mut buf = alloc::vec::Vec::new();
-        buf.try_reserve_exact(capacity)
-            .map_err(|_| DiffeqError::WorkspaceAllocationFailed { capacity })?;
-        buf.resize(capacity, T::ZERO);
-        debug_assert_eq!(buf.len(), capacity);
-        Ok(Self { buf })
-    }
-
-    /// Allocates a reusable scratch buffer of `capacity` zero-initialized scalars once up front.
-    ///
-    /// # Panics
-    /// Panics if heap allocation fails; prefer [`Self::try_with_capacity`] for fallible callers.
-    #[verified_engine::verified]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::try_with_capacity(capacity).expect("OwnedWorkspace::with_capacity allocation failed")
-    }
-
-    /// Borrows this buffer as a zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace).
-    #[inline]
-    pub fn as_workspace(&mut self) -> math_commons::math_kernel::types::SolverWorkspace<'_, T> {
-        math_commons::math_kernel::types::SolverWorkspace::new(&mut self.buf)
-    }
-}
 
 #[cfg(test)]
 mod serde_tests;

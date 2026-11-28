@@ -1,10 +1,15 @@
 //! Core types for copula operations.
 
+#[path = "psd_cholesky.rs"]
+mod psd_cholesky;
+
 use crate::error::CopulaError;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use math_commons::registry::TOLERANCE_HIGH;
+use math_memory::{ArenaLayout, OwnedByteArena, SolverWorkspace};
 use nalgebra::DMatrix;
+use psd_cholesky::{factor_psd_cholesky_in_workspace, psd_cholesky_scratch_len};
 
 /// A probability value in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -76,7 +81,10 @@ pub struct CorrelationMatrix {
 }
 
 #[verified_engine::verified]
-fn validate_entries_and_symmetry(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, CopulaError> {
+fn validate_and_fill_sym_row(
+    matrix: &DMatrix<f64>,
+    sym_row: &mut [f64],
+) -> Result<(), CopulaError> {
     let n = matrix.nrows();
     if n != matrix.ncols() {
         return Err(CopulaError::Math(MathError::DimensionMismatch {
@@ -105,78 +113,103 @@ fn validate_entries_and_symmetry(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, 
         }
     }
 
-    let mut sym = DMatrix::zeros(n, n);
+    sym_row.fill(0.0);
     for i in 0..n {
-        sym[(i, i)] = 1.0;
+        sym_row[math_commons::math_kernel::types::flatten_2d_index(i, i, n)] = 1.0;
         for j in (i + 1)..n {
             if (matrix[(i, j)] - matrix[(j, i)]).abs() > TOLERANCE_HIGH {
                 return Err(CopulaError::NotSymmetric);
             }
             let avg = (0.5 * (matrix[(i, j)] + matrix[(j, i)])).clamp(-1.0, 1.0);
-            sym[(i, j)] = avg;
-            sym[(j, i)] = avg;
+            sym_row[math_commons::math_kernel::types::flatten_2d_index(j, i, n)] = avg;
+            sym_row[math_commons::math_kernel::types::flatten_2d_index(i, j, n)] = avg;
         }
     }
-    Ok(sym)
-}
-
-fn compute_psd_factor(sym: DMatrix<f64>) -> Result<DMatrix<f64>, CopulaError> {
-    let n = sym.nrows();
-    let eigs = sym.clone().symmetric_eigenvalues();
-    if eigs
-        .iter()
-        .any(|&ev| !ev.is_finite() || ev < -TOLERANCE_HIGH)
-    {
-        return Err(CopulaError::NotPositiveDefinite);
-    }
-    let mut lower = DMatrix::zeros(n, n);
-    for i in 0..n {
-        for j in 0..i {
-            let l_jj = lower[(j, j)];
-            if l_jj > TOLERANCE_HIGH {
-                let mut sum = sym[(i, j)];
-                for k in 0..j {
-                    sum -= lower[(i, k)] * lower[(j, k)];
-                }
-                lower[(i, j)] = sum / l_jj;
-            }
-        }
-        let mut diag_sq = sym[(i, i)];
-        for k in 0..i {
-            diag_sq -= lower[(i, k)] * lower[(i, k)];
-        }
-        if diag_sq < -TOLERANCE_HIGH {
-            return Err(CopulaError::NotPositiveDefinite);
-        }
-        if diag_sq > TOLERANCE_HIGH * TOLERANCE_HIGH {
-            lower[(i, i)] = diag_sq.sqrt();
-        }
-    }
-    let recon = &lower * lower.transpose();
-    if (&recon - &sym).amax() <= 1e-7 {
-        return Ok(lower);
-    }
-    let se = sym.symmetric_eigen();
-    let sqrt_d = DMatrix::from_diagonal(&se.eigenvalues.map(|v| v.max(0.0).sqrt()));
-    let mut r = (se.eigenvectors * sqrt_d).transpose().qr().r();
-    for i in 0..n {
-        if r[(i, i)] < 0.0 {
-            for j in i..n {
-                r[(i, j)] = -r[(i, j)];
-            }
-        }
-    }
-    Ok(r.transpose())
+    Ok(())
 }
 
 impl CorrelationMatrix {
+    /// Returns conservative byte scratch capacity required by [`Self::new_with_workspace`] for an `n x n` matrix.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn workspace_bytes(n: usize) -> usize {
+        let nn = n.saturating_mul(n);
+        let mut layout = ArenaLayout::new();
+        let _ = layout.reserve::<f64>(
+            nn.saturating_mul(2)
+                .saturating_add(psd_cholesky_scratch_len(n)),
+        );
+        layout.total_bytes().saturating_add(64)
+    }
+
+    /// Validates `matrix` and factors its positive-semidefinite Cholesky root into `cholesky_buf` using `workspace` (`0` heap allocations).
+    #[verified_engine::verified]
+    pub fn new_with_workspace(
+        matrix: DMatrix<f64>,
+        mut cholesky_buf: DMatrix<f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
+    ) -> Result<Self, CopulaError> {
+        let n = matrix.nrows();
+        if n != matrix.ncols() {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(n),
+                actual: Dimension(matrix.ncols()),
+            }));
+        }
+        if n == 0 {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(1),
+                actual: Dimension(0),
+            }));
+        }
+        if cholesky_buf.shape() != (n, n) {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(n),
+                actual: Dimension(cholesky_buf.nrows()),
+            }));
+        }
+        let mut cur = workspace.cursor();
+        let sym_row = cur
+            .alloc_slice::<f64>(n.saturating_mul(n))
+            .map_err(|_| CopulaError::NotPositiveDefinite)?;
+        validate_and_fill_sym_row(&matrix, sym_row)?;
+        let lower = cur
+            .alloc_slice::<f64>(n.saturating_mul(n))
+            .map_err(|_| CopulaError::NotPositiveDefinite)?;
+        let mut sub = cur.into_arena();
+        factor_psd_cholesky_in_workspace(sym_row, lower, n, TOLERANCE_HIGH, &mut sub)?;
+        for r in 0..n {
+            for c in 0..n {
+                cholesky_buf[(r, c)] =
+                    lower[math_commons::math_kernel::types::flatten_2d_index(c, r, n)];
+            }
+        }
+        Ok(Self {
+            matrix,
+            cholesky: cholesky_buf,
+        })
+    }
+
     /// Creates a validated symmetric positive-semidefinite correlation matrix and caches its
     /// lower-triangular Cholesky factor.
     #[verified_engine::verified]
     pub fn new(matrix: DMatrix<f64>) -> Result<Self, CopulaError> {
-        let sym = validate_entries_and_symmetry(&matrix)?;
-        let cholesky = compute_psd_factor(sym)?;
-        Ok(Self { matrix, cholesky })
+        let n = matrix.nrows();
+        if n != matrix.ncols() {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(n),
+                actual: Dimension(matrix.ncols()),
+            }));
+        }
+        if n == 0 {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(1),
+                actual: Dimension(0),
+            }));
+        }
+        let cholesky_buf = DMatrix::zeros(n, n);
+        let mut ws = OwnedByteArena::with_capacity(Self::workspace_bytes(n));
+        Self::new_with_workspace(matrix, cholesky_buf, &mut ws)
     }
 
     /// Creates an equicorrelated `dimension x dimension` correlation matrix with off-diagonal `rho`.
@@ -334,5 +367,13 @@ mod tests {
             CorrelationMatrix::new(indefinite_equicorr),
             Err(CopulaError::NotPositiveDefinite)
         );
+
+        let valid3 = DMatrix::from_row_slice(3, 3, &[1.0, 0.4, 0.2, 0.4, 1.0, 0.3, 0.2, 0.3, 1.0]);
+        let chol_buf = DMatrix::zeros(3, 3);
+        let mut ws = OwnedByteArena::with_capacity(CorrelationMatrix::workspace_bytes(3));
+        let (cm, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            CorrelationMatrix::new_with_workspace(valid3, chol_buf, &mut ws).unwrap()
+        });
+        assert_eq!(cm.dimension(), 3);
     }
 }

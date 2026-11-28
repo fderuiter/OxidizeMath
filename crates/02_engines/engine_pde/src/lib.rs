@@ -33,6 +33,10 @@ pub use fft::{
 };
 pub use fourier_stepper::SemiImplicitFourierStepper;
 pub use fused_stepper::FusedStencilStepper;
+pub use math_commons::math_kernel::types::ScalarWorkspace;
+#[cfg(feature = "alloc")]
+pub use math_memory::OwnedByteArena;
+pub use math_memory::{ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, SolverWorkspace};
 pub use math_rng::{BASE_SEED, OxidizeRng};
 pub use spde_noise::{
     SpdeNoiseKind, inject_additive_noise_1d, inject_additive_noise_2d,
@@ -42,45 +46,6 @@ pub use spde_noise::{
 };
 pub use spde_stencil::{ExplicitSpdeStencilStepper, SplitStepSpdeStencilStepper};
 pub use stencil::{StencilNeighbors3D, StencilOperators};
-
-#[cfg(feature = "alloc")]
-/// Optional `alloc`-backed scratch buffer owner lending zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) views.
-#[derive(Debug, Clone)]
-pub struct PdeOwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
-    buf: alloc::vec::Vec<T>,
-}
-
-#[cfg(feature = "alloc")]
-impl<T: math_commons::math_kernel::types::Scalar> PdeOwnedWorkspace<T> {
-    /// Fallibly allocates a zero-initialized scratch buffer of `capacity` scalars.
-    ///
-    /// # Errors
-    /// Returns [`PdeError::WorkspaceAllocationFailed`] if the allocator rejects `capacity`.
-    #[verified_engine::verified]
-    pub fn try_with_capacity(capacity: usize) -> Result<Self, PdeError> {
-        let mut buf = alloc::vec::Vec::new();
-        buf.try_reserve_exact(capacity)
-            .map_err(|_| PdeError::WorkspaceAllocationFailed { capacity })?;
-        buf.resize(capacity, T::ZERO);
-        debug_assert_eq!(buf.len(), capacity);
-        Ok(Self { buf })
-    }
-
-    /// Allocates a zero-initialized scratch buffer of `capacity` scalars once up front.
-    ///
-    /// # Panics
-    /// Panics if heap allocation fails; prefer [`Self::try_with_capacity`] for fallible callers.
-    #[verified_engine::verified]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::try_with_capacity(capacity).expect("PdeOwnedWorkspace::with_capacity failed")
-    }
-
-    /// Borrows this buffer as a zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace).
-    #[inline]
-    pub fn as_workspace(&mut self) -> math_commons::math_kernel::types::SolverWorkspace<'_, T> {
-        math_commons::math_kernel::types::SolverWorkspace::new(&mut self.buf)
-    }
-}
 
 #[cfg(test)]
 mod serde_tests;

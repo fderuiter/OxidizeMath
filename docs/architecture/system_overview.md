@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 30 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 31 workspace crates:
 
 ```mermaid
 graph TD
@@ -86,6 +86,7 @@ graph TD
 
     subgraph Tier_00_Foundation["00_foundation (#![no_std] Primitives & Verification)"]
         MathDiag[math_diagnostics]
+        Mem[math_memory]
         Scalars[math_scalars]
         Rng[math_rng]
         Meta[scientific_metadata]
@@ -96,34 +97,35 @@ graph TD
     Xtask -.-> Verify
     Verify -.-> SciVerify & CoreCrate
     SciVerify -.-> AI & Phys & Bio & App & Clim & Epi & Pure & Pde & Opt & Commons & CoreCrate & Engine
-    MdTests -.-> Facade & Explorer & Meta & CoreCrate & Registry & Linalg & Opt & DiffEq & Pde & Rng & Scalars
+    MdTests -.-> Facade & Explorer & Meta & CoreCrate & Registry & Linalg & Opt & DiffEq & Pde & Mem & Rng & Scalars
 
     Cli --> Facade
-    GUI --> Explorer & Plot & Meta & Registry & Diag & Linalg & Opt & Commons & CoreCrate & Engine
+    GUI --> Explorer & Plot & Meta & Registry & Diag & Linalg & Opt & Commons & CoreCrate & Engine & Mem
     Plot --> Opt & Commons
     Explorer --> Facade
     Facade --> AI & Phys & Bio & App & Clim & Epi & Pure
-    Facade --> Commons & Linalg & Opt & DiffEq & Pde & Scalars & Diag & Meta & Engine & CoreCrate
+    Facade --> Commons & Linalg & Opt & DiffEq & Pde & Mem & Scalars & Diag & Meta & Engine & CoreCrate
 
-    AI --> DiffEq & Pure & Commons & CoreCrate & MathDiag & Engine
-    Phys --> DiffEq & Pde & Opt & Linalg & Pure & Commons & CoreCrate & Meta & MathDiag & Engine
-    Bio --> Pde & Pure & Commons & CoreCrate & Meta & MathDiag & Engine
-    App --> DiffEq & Pde & Opt & Linalg & Pure & Commons & CoreCrate & Scalars & MathDiag & Engine
+    AI --> DiffEq & Pure & Commons & CoreCrate & Mem & MathDiag & Engine
+    Phys --> DiffEq & Pde & Opt & Linalg & Pure & Commons & CoreCrate & Meta & Mem & MathDiag & Engine
+    Bio --> Pde & Pure & Commons & CoreCrate & Meta & Mem & MathDiag & Engine
+    App --> DiffEq & Pde & Opt & Linalg & Pure & Commons & CoreCrate & Scalars & Mem & MathDiag & Engine
     Clim --> Pure & Commons & CoreCrate & MathDiag & Engine
     Epi --> Pure & Commons & CoreCrate & MathDiag & Engine
 
-    DiffEq --> Commons & Rng & MathDiag & Engine
-    Pde --> Commons & Rng & MathDiag & Engine
+    DiffEq --> Commons & Mem & Rng & MathDiag & Engine
+    Pde --> Commons & Mem & Rng & MathDiag & Engine
     Opt --> Linalg & Scalars & Meta & MathDiag & Engine
-    Linalg --> Scalars & Engine
+    Linalg --> Mem & Scalars & Engine
 
-    Pure --> Commons & CoreCrate & Scalars & Rng & Meta & MathDiag & Engine
-    Commons --> Scalars & Rng & MathDiag & Engine
+    Pure --> Commons & CoreCrate & Mem & Scalars & Rng & Meta & MathDiag & Engine
+    Commons --> Mem & Scalars & Rng & MathDiag & Engine
     Registry --> Diag
     Diag --> MathDiag
-    CoreCrate --> Scalars & Rng & Meta & Engine
+    CoreCrate --> Mem & Scalars & Rng & Meta & Engine
     Rng --> Scalars & MathDiag
-    Scalars --> MathDiag
+    Scalars --> Mem & MathDiag
+    Mem --> MathDiag
     Engine --> Macros & Meta
 
     style GUI fill:#cde,stroke:#333
@@ -136,11 +138,12 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 30 member crates declared in `Cargo.toml`:
+The workspace contains all 31 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
 | `crates/00_foundation/math_diagnostics` | `#![no_std]` zero-allocation diagnostic visitor contract | [math_diagnostics](../../crates/00_foundation/math_diagnostics/README.md) |
+| `crates/00_foundation/math_memory` | `#![no_std]` `bytemuck`-backed `ByteArena`, `FlagSlice`/`BitSlice`, and `SolverWorkspace` trait | [math_memory](../../crates/00_foundation/math_memory/README.md) |
 | `crates/00_foundation/math_scalars` | `#![no_std]` algebraic scalar traits, `0`-ULP `libm` IEEE-754 kernels, dual numbers, and workspace slices | [math_scalars](../../crates/00_foundation/math_scalars/README.md) |
 | `crates/00_foundation/math_rng` | `#![no_std]` ChaCha8 stream PRNG, generic float/index samplers, and 64D QMC views | [math_rng](../../crates/00_foundation/math_rng/README.md) |
 | `crates/00_foundation/scientific_metadata` | Theory descriptors and citation metadata | [scientific_metadata](../../crates/00_foundation/scientific_metadata/README.md) |

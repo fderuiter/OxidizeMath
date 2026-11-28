@@ -5,6 +5,7 @@
 use super::KnotError;
 use crate::pure_math::algebra::{BraidWord, MAX_BRAID_STRANDS};
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 
 /// Pre-allocated $(n - 1) \times (n - 1)$ reduced Burau matrix workspace enabling
 /// zero-allocation generator stepping inside `VerifiedEngine::run_verified`.
@@ -12,8 +13,9 @@ use math_commons::math_kernel::types::flatten_2d_index;
 pub struct BurauWorkspace {
     strands: usize,
     dim: usize,
-    matrix: Vec<f64>,
-    scratch: Vec<f64>,
+    arena: OwnedByteArena,
+    matrix: ArenaRegion<f64>,
+    scratch: ArenaRegion<f64>,
 }
 
 impl BurauWorkspace {
@@ -30,26 +32,37 @@ impl BurauWorkspace {
             });
         }
         let dim = strands - 1;
+        let len = dim * dim;
+        let mut layout = ArenaLayout::new();
+        let matrix = layout
+            .reserve::<f64>(len)
+            .expect("Burau matrix region layout valid");
+        let scratch = layout
+            .reserve::<f64>(len)
+            .expect("Burau scratch region layout valid");
         let mut ws = Self {
             strands,
             dim,
-            matrix: vec![0.0; dim * dim],
-            scratch: vec![0.0; dim * dim],
+            arena: OwnedByteArena::from_layout(&layout),
+            matrix,
+            scratch,
         };
         ws.reset_identity();
-        assert_eq!(ws.matrix.len(), dim * dim);
-        assert_eq!(ws.scratch.len(), dim * dim);
+        assert_eq!(ws.arena.region_slice(ws.matrix).len(), len);
+        assert_eq!(ws.arena.region_slice(ws.scratch).len(), len);
         Ok(ws)
     }
 
     /// Resets the internal $(n - 1) \times (n - 1)$ matrix to $I_{n-1}$ with zero heap allocations.
     #[verified_engine::verified]
     pub fn reset_identity(&mut self) {
-        self.matrix.fill(0.0);
-        for i in 0..self.dim {
-            self.matrix[flatten_2d_index(i, i, self.dim)] = 1.0;
+        let dim = self.dim;
+        let matrix = self.arena.region_slice_mut(self.matrix);
+        matrix.fill(0.0);
+        for i in 0..dim {
+            matrix[flatten_2d_index(i, i, dim)] = 1.0;
         }
-        debug_assert!(self.dim == 0 || self.matrix[0] == 1.0);
+        debug_assert!(dim == 0 || matrix[0] == 1.0);
     }
 
     /// Dimension $n - 1$ of the reduced Burau representation.
@@ -63,7 +76,7 @@ impl BurauWorkspace {
     #[must_use]
     #[verified_engine::verified]
     pub fn matrix_slice(&self) -> &[f64] {
-        &self.matrix
+        self.arena.region_slice(self.matrix)
     }
 
     /// Multiplies the current matrix on the right by $\bar{\psi}(\sigma_i^{\pm 1})(t)$ in place
@@ -87,28 +100,29 @@ impl BurauWorkspace {
         let k = idx - 1;
         let dim = self.dim;
         let inv_t = 1.0 / t;
+        let matrix = self.arena.region_slice_mut(self.matrix);
 
         for r in 0..dim {
             let rk = flatten_2d_index(k, r, dim);
-            let m_rk = self.matrix[rk];
+            let m_rk = matrix[rk];
             if m_rk == 0.0 {
                 continue;
             }
             if generator > 0 {
                 if k > 0 {
-                    self.matrix[flatten_2d_index(k - 1, r, dim)] += t * m_rk;
+                    matrix[flatten_2d_index(k - 1, r, dim)] += t * m_rk;
                 }
-                self.matrix[rk] = -t * m_rk;
+                matrix[rk] = -t * m_rk;
                 if k + 1 < dim {
-                    self.matrix[flatten_2d_index(k + 1, r, dim)] += m_rk;
+                    matrix[flatten_2d_index(k + 1, r, dim)] += m_rk;
                 }
             } else {
                 if k > 0 {
-                    self.matrix[flatten_2d_index(k - 1, r, dim)] += m_rk;
+                    matrix[flatten_2d_index(k - 1, r, dim)] += m_rk;
                 }
-                self.matrix[rk] = -inv_t * m_rk;
+                matrix[rk] = -inv_t * m_rk;
                 if k + 1 < dim {
-                    self.matrix[flatten_2d_index(k + 1, r, dim)] += inv_t * m_rk;
+                    matrix[flatten_2d_index(k + 1, r, dim)] += inv_t * m_rk;
                 }
             }
         }
@@ -146,17 +160,23 @@ impl BurauWorkspace {
                 reason: "cyclotomic denominator vanishes at chosen parameter t",
             });
         }
-        for i in 0..self.dim {
-            for j in 0..self.dim {
-                let ij = flatten_2d_index(j, i, self.dim);
-                self.scratch[ij] = if i == j {
-                    1.0 - self.matrix[ij]
+        let dim = self.dim;
+        let mat_reg = self.matrix;
+        let scr_reg = self.scratch;
+        let mut cur = self.arena.raw_cursor();
+        let matrix = cur.region_mut(mat_reg);
+        let scratch = cur.region_mut(scr_reg);
+        for i in 0..dim {
+            for j in 0..dim {
+                let ij = flatten_2d_index(j, i, dim);
+                scratch[ij] = if i == j {
+                    1.0 - matrix[ij]
                 } else {
-                    -self.matrix[ij]
+                    -matrix[ij]
                 };
             }
         }
-        let val = gaussian_det_in_place(&mut self.scratch, self.dim) / denom;
+        let val = gaussian_det_in_place(scratch, dim) / denom;
         assert!(val.is_finite());
         Ok(val)
     }
