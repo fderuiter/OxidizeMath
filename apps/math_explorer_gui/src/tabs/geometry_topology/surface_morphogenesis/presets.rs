@@ -1,8 +1,6 @@
 // [cite:modular_polynomials_review]
 //! Curated starter gallery presets for [`super::SurfaceMorphogenesisTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 pub(super) const TORUS_STRIPES_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",

@@ -16,6 +16,8 @@
 pub mod band_theory;
 pub mod bcs;
 pub mod interactions;
+/// Zero-allocation Onsager/Yang 2D Ising order-parameter and spatial dilemma evaluators.
+pub mod ising_atlas;
 /// Bravais crystal lattices (SC, BCC, FCC), coordination numbers, and packing fractions.
 pub mod lattice;
 pub mod magnetism;
@@ -24,6 +26,10 @@ pub mod screening;
 pub mod second_quantization;
 /// Strongly typed energy (`ElectronVolts`) and temperature (`Kelvin`) unit wrappers.
 pub mod types;
+
+pub use ising_atlas::{
+    IsingAtlasRegime, eval_ising_order_parameter, eval_spatial_dilemma_cell, onsager_critical_temp,
+};
 
 // [cite:mmwave_radiotherapy_setup]
 

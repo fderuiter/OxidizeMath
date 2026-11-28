@@ -1,5 +1,6 @@
 pub(crate) mod dependencies;
 pub(crate) mod doctests;
+pub(crate) mod gui_opt_out;
 pub(crate) mod lint_policy;
 pub(crate) mod missing_docs;
 pub(crate) mod staged_member;
@@ -235,6 +236,7 @@ impl<'ast> Visit<'ast> for DeadCodeVisitor<'_> {
 
 struct MemberAuditContext<'a> {
     member_dir: &'a Path,
+    package_name: Option<&'a str>,
     whitelist: &'a VerificationWhitelist,
     check_clippy_bypasses: bool,
     check_missing_docs: bool,
@@ -263,6 +265,10 @@ fn audit_member_sources(
             let mut dc_visitor = DeadCodeVisitor::new(&file_path, &ctx.whitelist.dead_code);
             dc_visitor.visit_file(ast);
             if dc_visitor.has_unauthorized {
+                success = false;
+            }
+
+            if !gui_opt_out::audit_headless_gui_opt_out(ast, &file_path, ctx.package_name) {
                 success = false;
             }
 
@@ -329,6 +335,7 @@ fn audit_single_member(
 
     let ctx = MemberAuditContext {
         member_dir: &member_dir,
+        package_name,
         whitelist,
         check_clippy_bypasses,
         check_missing_docs,
@@ -408,18 +415,21 @@ pub fn run_policy_audit_with_cache(
     run_policy_audit_with_caches(members, cache, &mut manifest_cache)
 }
 
-pub(crate) fn run_policy_audit_with_caches(
-    members: &[&str],
-    cache: &mut oxidize_core::traceability::AstCache,
-    manifest_cache: &mut crate::manifest_cache::ManifestCache,
-) -> bool {
+fn resolve_active_whitelist_path() -> PathBuf {
     let resolved = if lint_policy::cwd_is_member_crate_dir() {
         crate::whitelist::find_whitelist_path()
     } else {
         crate::whitelist::resolve_whitelist_path(ROOT_ONLY_WHITELIST_CANDIDATES)
     };
-    let whitelist_path =
-        resolved.unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
+    resolved.unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf())
+}
+
+pub(crate) fn run_policy_audit_with_caches(
+    members: &[&str],
+    cache: &mut oxidize_core::traceability::AstCache,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
+) -> bool {
+    let whitelist_path = resolve_active_whitelist_path();
     run_policy_audit_with_whitelist_and_caches(members, &whitelist_path, cache, manifest_cache)
 }
 
@@ -465,13 +475,7 @@ pub(crate) fn run_policy_audit_with_whitelist_and_caches(
 }
 
 pub(crate) fn audit_staged_markdown_fences(staged_md_paths: &[String]) -> bool {
-    let resolved = if lint_policy::cwd_is_member_crate_dir() {
-        crate::whitelist::find_whitelist_path()
-    } else {
-        crate::whitelist::resolve_whitelist_path(ROOT_ONLY_WHITELIST_CANDIDATES)
-    };
-    let whitelist_path =
-        resolved.unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
+    let whitelist_path = resolve_active_whitelist_path();
     let whitelist = match crate::whitelist::load_whitelist_strict(None, &[whitelist_path]) {
         Ok(cfg) => cfg,
         Err(err) => {
@@ -485,6 +489,8 @@ pub(crate) fn audit_staged_markdown_fences(staged_md_paths: &[String]) -> bool {
 
 #[cfg(test)]
 mod dep_doctest_tests;
+#[cfg(test)]
+mod gui_opt_out_tests;
 #[cfg(test)]
 mod missing_docs_tests;
 #[cfg(test)]

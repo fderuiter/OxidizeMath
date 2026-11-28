@@ -1,7 +1,5 @@
 //! `ToolMetadata` and `StarterPresetMetadata` registrations for `QuantumStatsPhononTool`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::QuantumStatsPhononTool;
 
 inventory::submit! {

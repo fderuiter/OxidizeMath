@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Predictor formula mode, scientific theory metadata, and starter gallery presets
 //! for [`LossLandscapeTool`].
 
@@ -99,3 +97,5 @@ inventory::submit! {
         preset_generator: || NONCONVEX_SINUSOIDAL_PRESET_JSON,
     }
 }
+
+// [cite:modular_polynomials_review]

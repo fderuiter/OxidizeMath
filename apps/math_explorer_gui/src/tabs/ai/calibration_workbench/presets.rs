@@ -1,7 +1,5 @@
 //! Starter gallery presets for `CalibrationWorkbenchTool`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 /// Starter preset JSON for overconfident neural logits with post-hoc temperature scaling.
 pub const PRESET_OVERCONFIDENT_MLP: &str = r#"{
   "metadata": {

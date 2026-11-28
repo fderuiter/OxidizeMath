@@ -14,10 +14,15 @@ pub mod max_flow_min_cut;
 pub mod minimum_spanning_tree;
 /// Submodule providing `parameters` types, traits, and algorithms.
 pub mod parameters;
+/// Preallocated zero-allocation Frank-Wolfe Wardrop congestion routing solver.
+pub mod wardrop;
 
 pub use error::GraphTheoryError;
 pub use max_flow_min_cut::max_flow_min_cut as solve_max_flow_min_cut;
 pub use minimum_spanning_tree::minimum_spanning_tree as solve_minimum_spanning_tree;
+pub use wardrop::{
+    AffineLatency, FrankWolfeScratch, WardropError, WardropSummary, solve_wardrop_in_place,
+};
 
 // [cite:graph_parameters_rust]
 // [cite:dijkstra]

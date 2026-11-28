@@ -1,7 +1,5 @@
 //! Zero-allocation thread-local 4D `GatingTelemetry` bus coupling `RadarGatingTool` and `DoseCalculationTool`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_explorer::physics::medical::radar_gating::BeamState;
 use std::cell::Cell;
 

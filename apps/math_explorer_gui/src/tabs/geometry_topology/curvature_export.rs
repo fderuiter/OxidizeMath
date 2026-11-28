@@ -1,7 +1,5 @@
 //! Cold-path watertight per-vertex colored 3D mesh builder for [`super::CurvatureHeatmap`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::super::export_utils::{
     clamp_grid_res, extrude_open_patch_wall_shell, extrude_surface_wall_shell,
     has_direct_periodic_seams, has_klein_seam_topology, has_polar_singularities,
@@ -235,3 +233,5 @@ impl CurvatureHeatmap {
         Ok(ColoredMesh::new(mesh, map_curvatures_to_colors(&all)))
     }
 }
+
+// [cite:graph_parameters_rust]

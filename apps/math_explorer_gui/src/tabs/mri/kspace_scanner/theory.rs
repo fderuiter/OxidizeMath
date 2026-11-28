@@ -1,8 +1,6 @@
 //! Theoretical equations, peer-reviewed citations, and curated starter gallery presets
 //! for [`super::tool::MriKSpaceScannerTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
@@ -150,3 +148,5 @@ inventory::submit! {
         preset_generator: || PRESET_MRI_KSPACE_LORENZ_CS,
     }
 }
+
+// [cite:favorite_child]
