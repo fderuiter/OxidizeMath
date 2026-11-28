@@ -44,6 +44,7 @@ fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             bus,
         ),
         check_leaf(error::FitError::SingularMatrix, bus),
+        check_leaf(error::OptError::InvalidDimension, bus),
         check_leaf(error::LinalgError::SingularMatrix, bus),
         check_leaf(error::EvalError::UnknownVariable("x".to_string()), bus),
         check_leaf(error::GlslError::DepthLimitExceeded(64), bus),
@@ -272,11 +273,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 73);
-    assert_eq!(*events.lock().unwrap(), 73);
+    assert_eq!(converted.len(), 74);
+    assert_eq!(*events.lock().unwrap(), 74);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 79);
+    assert_eq!(*events.lock().unwrap(), 80);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -386,6 +387,7 @@ pub fn verify_prelude_error_reexports() {
         p::PdeError,
         p::EvalError,
         p::FitError,
+        p::OptError,
         p::GlslError,
         p::LexError,
         p::LinalgError,

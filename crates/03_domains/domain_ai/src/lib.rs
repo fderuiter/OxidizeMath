@@ -23,8 +23,17 @@ pub mod __doctest_facade {
         pub use ::pure_math::__doctest_facade::prelude::*;
     }
     pub use crate::ai;
+    pub use ::engine_opt;
     pub use ::pure_math::__doctest_facade::{
         ast, constants, diagnostics, math_kernel, math_types, mesh, nalgebra, num_complex,
         petgraph, poi, primitives, pure_math, rand, registry, rng, series, wigner,
     };
 }
+
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(test)]
+pub(crate) static VERIFIED_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

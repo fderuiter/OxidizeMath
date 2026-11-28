@@ -16,7 +16,7 @@ pub mod __doctest_facade {
             PharmacokineticsError, PortfolioError, VoxelGridError,
         };
         pub use ::pure_math::__doctest_facade::error::*;
-        pub use engine_opt::error::FitError;
+        pub use engine_opt::error::{FitError, OptError};
     }
     /// Doctest prelude re-exports.
     pub mod prelude {
@@ -33,5 +33,14 @@ pub mod __doctest_facade {
         nalgebra, num_complex, petgraph, poi, primitives, pure_math, qmc, rand, registry, rng,
         series, wigner,
     };
+    pub use engine_opt;
     pub use engine_opt::fit;
 }
+
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(test)]
+pub(crate) static VERIFIED_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

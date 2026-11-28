@@ -11,6 +11,12 @@ use super::traits::PharmacokineticModel;
 use super::two_pulse::TwoPulseModel;
 use crate::error::PharmacokineticsError;
 
+mod optimize;
+pub use optimize::{
+    MAX_OPTIMIZED_DOSES, RegimenMpcConfig, populate_ir_dose_events_into, regimen_mpc_workspace_len,
+    solve_regimen_mpc_into,
+};
+
 /// Upper bound on scheduled dose administrations in an interactive regimen (`64` events).
 pub const MAX_REGIMEN_EVENTS: usize = 64;
 

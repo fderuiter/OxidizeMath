@@ -77,12 +77,17 @@ pub fn lu_factor_in_place<T: Scalar>(
             parity = -parity;
         }
         let pivot = lu[mat_idx(k, k, n)];
-        for i in (k + 1)..n {
-            let mult = lu[mat_idx(i, k, n)] / pivot;
-            lu[mat_idx(i, k, n)] = mult;
-            for j in (k + 1)..n {
-                let upper = lu[mat_idx(k, j, n)];
-                lu[mat_idx(i, j, n)] -= mult * upper;
+        let (top, bottom) = lu.split_at_mut((k + 1) * n);
+        let pivot_tail = &top[k * n + (k + 1)..(k + 1) * n];
+        for row in bottom.chunks_exact_mut(n) {
+            let lu_ik = row[k];
+            if lu_ik == T::ZERO {
+                continue;
+            }
+            let mult = lu_ik / pivot;
+            row[k] = mult;
+            for (dst, &upper) in row[k + 1..].iter_mut().zip(pivot_tail.iter()) {
+                *dst -= mult * upper;
             }
         }
     }

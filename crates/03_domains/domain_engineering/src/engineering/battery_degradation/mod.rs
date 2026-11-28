@@ -10,8 +10,10 @@ pub mod types;
 
 pub use calibration::{CalibratedAgingFit, calibrate_electrochemical_model};
 pub use duty::{
-    DAYS_PER_YEAR, DutyLifetimeSummary, DutyPointBreakdown, DutySegment, MAX_DUTY_SEGMENTS,
-    estimate_duty_lifetime, evaluate_duty_point,
+    DAYS_PER_YEAR, DutyLifetimeSummary, DutyPointBreakdown, DutyScheduleConfig, DutySegment,
+    MAX_DUTY_SEGMENTS, MAX_SCHEDULE_SLOTS, apply_scheduled_c_rates_into,
+    duty_schedule_workspace_len, estimate_duty_lifetime, evaluate_duty_point,
+    solve_duty_schedule_mpc_into,
 };
 pub use model::{
     ChemistryPreset, DegradationModel, ElectrochemicalAgingModel, MAX_C_RATE, MAX_EXPONENT_Z,

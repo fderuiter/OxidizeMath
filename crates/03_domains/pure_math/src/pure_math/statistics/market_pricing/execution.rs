@@ -3,6 +3,12 @@
 use crate::error::MarketPricingError;
 use crate::pure_math::statistics::kelly::{Odds, UnitInterval};
 
+mod almgren_chriss;
+pub use almgren_chriss::{
+    AlmgrenChrissConfig, almgren_chriss_analytical_trajectory_into, almgren_chriss_workspace_len,
+    solve_almgren_chriss_mpc_into,
+};
+
 /// Balanced or custom-stake spread/total middle analysis.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MiddleReport {

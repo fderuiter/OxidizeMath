@@ -3,7 +3,7 @@
 pub use diagnostics::DiagnosticError;
 pub use engine_diffeq::DiffeqError;
 pub use engine_linalg::LinalgError;
-pub use engine_opt::error::FitError;
+pub use engine_opt::error::{FitError, OptError};
 pub use engine_pde::PdeError;
 pub use math_commons::error::{
     EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
@@ -75,6 +75,8 @@ pub enum Error {
     Eval(EvalError),
     /// Zero-allocation curve-fitting solver error.
     Fit(FitError),
+    /// Zero-allocation optimal-control, DP, MFG, and Nash solver error.
+    Opt(OptError),
     /// AST-to-GLSL transpilation error.
     Glsl(GlslError),
     /// AST lexer error.

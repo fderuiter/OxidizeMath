@@ -78,6 +78,8 @@ pub enum ControllerKind {
     GrpoPolicy,
     /// Discretized tabular Q-learning (`QLearningAgent` + `FixedArrayQFunction` + `select_action_into`).
     DiscreteQLearning,
+    /// Constrained receding-horizon projected Model Predictive Control (`engine_opt::mpc::solve_mpc`).
+    MpcPolicy,
 }
 
 impl ControllerKind {
@@ -86,6 +88,7 @@ impl ControllerKind {
         match self {
             Self::GrpoPolicy => "GRPO Gaussian Policy",
             Self::DiscreteQLearning => "Discrete Q-Learning Agent",
+            Self::MpcPolicy => "Projected MPC (Receding Horizon)",
         }
     }
 }
