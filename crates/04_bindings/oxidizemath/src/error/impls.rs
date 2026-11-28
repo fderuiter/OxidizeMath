@@ -40,6 +40,7 @@ impl Error {
             Self::GameTheory(err) => Some(err),
             Self::Glicko2(err) => Some(err),
             Self::GraphTheory(err) => Some(err),
+            Self::Wardrop(err) => Some(err),
             Self::Hyperbolic(err) => Some(err),
             Self::Kalman(err) => Some(err),
             Self::Kelly(err) => Some(err),

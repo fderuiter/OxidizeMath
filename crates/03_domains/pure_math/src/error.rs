@@ -399,7 +399,7 @@ pub use crate::pure_math::{
     },
     differential_geometry::hyperbolic::Su11HyperbolicError,
     elliptic_curves::EllipticCurveError,
-    graph_theory::GraphTheoryError,
+    graph_theory::{GraphTheoryError, wardrop::WardropError},
     hyperbolic::HyperbolicError,
     knot_theory::KnotError,
     number_theory::ambs::AmbsError,

@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 /// Legacy starter preset JSON envelope for the Fractal Viewer.
 pub const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
@@ -97,3 +95,5 @@ inventory::submit! {
         preset_generator: || STARTER_CUSP_DUST_JSON,
     }
 }
+
+// [cite:algorithmic_information_rust]

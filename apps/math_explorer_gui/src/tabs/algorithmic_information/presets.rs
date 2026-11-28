@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Federated `ToolMetadata` and `StarterPresetMetadata` registrations for [`FractranMachineTool`].
 
 use super::state::FractranMachineTool;

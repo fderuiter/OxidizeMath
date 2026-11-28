@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use nalgebra::Vector3;
 use serde::de::{self, SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
@@ -138,3 +136,5 @@ where
 
     deserializer.deserialize_seq(Vec3Visitor)
 }
+
+// [cite:algorithmic_information_rust]

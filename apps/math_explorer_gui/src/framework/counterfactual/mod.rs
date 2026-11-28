@@ -1,7 +1,5 @@
 //! Counterfactual shadow twin (`CounterfactualBranchEngine`) framework primitives.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 mod metrics;
 mod ui;
 

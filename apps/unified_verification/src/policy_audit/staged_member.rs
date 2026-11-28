@@ -3,7 +3,7 @@ use super::dependencies::{
     manifest_package_name,
 };
 use super::{
-    DeadCodeVisitor, MemberAuditContext, doctests, lint_policy, missing_docs,
+    DeadCodeVisitor, MemberAuditContext, doctests, gui_opt_out, lint_policy, missing_docs,
     report_unused_dependencies,
 };
 use crate::whitelist::{ROOT_ONLY_WHITELIST_CANDIDATES, VerificationWhitelist};
@@ -76,6 +76,10 @@ fn audit_staged_file_full(
     let mut dc_visitor = DeadCodeVisitor::new(file_path, &ctx.whitelist.dead_code);
     dc_visitor.visit_file(ast);
     if dc_visitor.has_unauthorized {
+        ok = false;
+    }
+
+    if !gui_opt_out::audit_headless_gui_opt_out(ast, file_path, ctx.package_name) {
         ok = false;
     }
 
@@ -198,6 +202,7 @@ fn audit_single_member_scoped(
 
     let ctx = MemberAuditContext {
         member_dir: &member_dir,
+        package_name,
         whitelist,
         check_clippy_bypasses,
         check_missing_docs,

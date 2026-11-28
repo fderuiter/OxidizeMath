@@ -1,7 +1,5 @@
 //! Serializable configuration state for [`super::BankrollGrowthTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::super::bankroll_ensemble::{
     BankrollLabMode, VolatilityHypothesis, DEFAULT_BARRIER_FLOOR_RATIO, DEFAULT_CUSTOM_FRACTION,
     MAX_BARRIER_FLOOR_RATIO, MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,

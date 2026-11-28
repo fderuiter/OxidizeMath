@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Discretized 3D manifold mesh builder (`<= 4,096` vertices) producing welded polar,
 //! periodic, folded cortical, and compiled custom surfaces alongside [`CotangentLaplacian`]
 //! and [`DiscreteSurface`].
@@ -414,3 +412,5 @@ fn finalize_geometry(patch: RawManifoldPatch) -> ManifoldGeometry {
         discrete_surface: patch.discrete_surface,
     }
 }
+
+// [cite:graph_parameters_rust]

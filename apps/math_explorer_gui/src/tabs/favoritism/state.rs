@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_explorer::applied::favoritism::FavoritismInputs;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
@@ -197,3 +195,5 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_FAVORITISM_SIBLING_RIVALRY,
     }
 }
+
+// [cite:graph_parameters_rust]

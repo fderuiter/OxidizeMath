@@ -1381,6 +1381,36 @@
   ],
   "domain_applied:src/applied/algorithms/kalman.rs": [
     {
+      "signature": "pub use ekf :: FastEkf"
+    },
+    {
+      "signature": "pub use ekf :: MIN_MEASUREMENT_VARIANCE"
+    },
+    {
+      "signature": "pub use ekf :: rk4_step_with_jacobian"
+    },
+    {
+      "signature": "pub use fast_cv :: FastCvKalman"
+    },
+    {
+      "signature": "pub use models :: LorenzKalmanModel"
+    },
+    {
+      "signature": "pub use models :: PkKalmanModel"
+    },
+    {
+      "signature": "pub use models :: SeirKalmanModel"
+    },
+    {
+      "signature": "pub use models :: lorenz_rhs_and_jac"
+    },
+    {
+      "signature": "pub use models :: pk_rhs_and_jac"
+    },
+    {
+      "signature": "pub use models :: seir_rhs_and_jac"
+    },
+    {
       "signature": "pub use pure_math :: pure_math :: analysis :: kalman :: KalmanError"
     },
     {
@@ -1394,6 +1424,87 @@
     },
     {
       "signature": "pub use pure_math :: pure_math :: analysis :: kalman :: KalmanSystem"
+    }
+  ],
+  "domain_applied:src/applied/algorithms/kalman/ekf.rs": [
+    {
+      "signature": "impl < const N : usize > FastEkf < N > { pub fn from_validated_builder < M : KalmanSystem < f64 > > (_ : M , _ : f64 , _ : [f64 ; N] , _ : [f64 ; N] ,) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > FastEkf < N > { pub fn new (_ : [f64 ; N] , _ : [f64 ; N]) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > FastEkf < N > { pub fn predict_rk4 < F > (& mut self , _ : f64 , _ : & [f64 ; N] , _ : F) where F : Fn (& [f64 ; N]) -> ([f64 ; N] , [[f64 ; N] ; N]) , }"
+    },
+    {
+      "signature": "impl < const N : usize > FastEkf < N > { pub fn reset_in_place (& mut self , _ : [f64 ; N] , _ : [f64 ; N]) }"
+    },
+    {
+      "signature": "impl < const N : usize > FastEkf < N > { pub fn std_dev (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl < const N : usize > FastEkf < N > { pub fn try_from_validated_builder < M : KalmanSystem < f64 > > (_ : M , _ : f64 , _ : [f64 ; N] , _ : [f64 ; N] ,) -> Result < Self , KalmanError > }"
+    },
+    {
+      "signature": "impl < const N : usize > FastEkf < N > { pub fn update_unit_obs (& mut self , _ : usize , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "pub const MIN_MEASUREMENT_VARIANCE : f64"
+    },
+    {
+      "signature": "pub fn rk4_step_with_jacobian < const N : usize , F > (_ : & [f64 ; N] , _ : f64 , _ : F ,) -> ([f64 ; N] , [[f64 ; N] ; N]) where F : Fn (& [f64 ; N]) -> ([f64 ; N] , [[f64 ; N] ; N]) ,"
+    },
+    {
+      "signature": "pub struct FastEkf < const N : usize >"
+    }
+  ],
+  "domain_applied:src/applied/algorithms/kalman/fast_cv.rs": [
+    {
+      "signature": "impl FastCvKalman { pub const fn new (_ : [f64 ; 2] , _ : [[f64 ; 2] ; 2] , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl FastCvKalman { pub const fn with_unit_covariance (_ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl FastCvKalman { pub fn predict (& mut self) }"
+    },
+    {
+      "signature": "impl FastCvKalman { pub fn predict_ahead (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FastCvKalman { pub fn update (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "pub struct FastCvKalman"
+    }
+  ],
+  "domain_applied:src/applied/algorithms/kalman/models.rs": [
+    {
+      "signature": "impl LorenzKalmanModel { pub fn q_diag (& self , _ : f64) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl PkKalmanModel { pub fn q_diag (& self , _ : f64) -> [f64 ; 3] }"
+    },
+    {
+      "signature": "impl SeirKalmanModel { pub fn q_diag (& self , _ : f64) -> [f64 ; 4] }"
+    },
+    {
+      "signature": "pub fn lorenz_rhs_and_jac (_ : & [f64 ; 3] , _ : f64 , _ : f64 , _ : f64 ,) -> ([f64 ; 3] , [[f64 ; 3] ; 3])"
+    },
+    {
+      "signature": "pub fn pk_rhs_and_jac (_ : & [f64 ; 3] , _ : f64 , _ : f64) -> ([f64 ; 3] , [[f64 ; 3] ; 3])"
+    },
+    {
+      "signature": "pub fn seir_rhs_and_jac (_ : & [f64 ; 4] , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> ([f64 ; 4] , [[f64 ; 4] ; 4])"
+    },
+    {
+      "signature": "pub struct LorenzKalmanModel"
+    },
+    {
+      "signature": "pub struct PkKalmanModel"
+    },
+    {
+      "signature": "pub struct SeirKalmanModel"
     }
   ],
   "domain_applied:src/applied/algorithms/mod.rs": [
@@ -1882,6 +1993,55 @@
       "signature": "pub struct SurvivalTime"
     }
   ],
+  "domain_applied:src/applied/engineering/mod.rs": [
+    {
+      "signature": "pub use upo_control :: *"
+    }
+  ],
+  "domain_applied:src/applied/engineering/upo_control.rs": [
+    {
+      "signature": "pub const LORENZ_BETA : f64"
+    },
+    {
+      "signature": "pub const LORENZ_RHO0 : f64"
+    },
+    {
+      "signature": "pub const LORENZ_SIGMA : f64"
+    },
+    {
+      "signature": "pub const LORENZ_UPO_STEPS : usize"
+    },
+    {
+      "signature": "pub fn compute_ogy_rayleigh_thrust (_ : f64 , _ : f64) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub fn lorenz_sensor_variance (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn nearest_upo_index (_ : & [[f64 ; 3] ; LORENZ_UPO_STEPS] , _ : & [[f64 ; 3] ; LORENZ_UPO_STEPS] , _ : & [f64 ; 3] ,) -> (usize , f64)"
+    },
+    {
+      "signature": "pub fn observe_and_score_upo_step (_ : & mut FastEkf < 3 > , _ : & [[f64 ; 3] ; LORENZ_UPO_STEPS] , _ : & [[f64 ; 3] ; LORENZ_UPO_STEPS] , _ : Vector3 < f64 > , _ : Vector3 < f64 > , _ : f64 , _ : f64 , _ : f64 , _ : UpoControlConfig , _ : & mut OxidizeRng ,) -> PlantStepOutput"
+    },
+    {
+      "signature": "pub fn positive_control_fraction (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn precompute_viswanath_upo (_ : f64 ,) -> ([[f64 ; 3] ; LORENZ_UPO_STEPS] , [[f64 ; 3] ; LORENZ_UPO_STEPS])"
+    },
+    {
+      "signature": "pub fn quantize_bin (_ : f64 , _ : f64 , _ : f64 , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn upo_features_and_bin (_ : & [f64 ; 3] , _ : & [[f64 ; 3] ; LORENZ_UPO_STEPS] , _ : & [[f64 ; 3] ; LORENZ_UPO_STEPS] ,) -> ([f64 ; 4] , usize)"
+    },
+    {
+      "signature": "pub struct PlantStepOutput"
+    },
+    {
+      "signature": "pub struct UpoControlConfig"
+    }
+  ],
   "domain_applied:src/applied/favoritism/favorite_child.rs": [
     {
       "signature": "pub fn find_favorite_child (_ : & [Child]) -> Option < & Child >"
@@ -2313,6 +2473,9 @@
     },
     {
       "signature": "pub trait Correspondence { fn is_in_image (& self , _ : & DVector < f64 > , _ : & DVector < f64 >) -> bool }"
+    },
+    {
+      "signature": "pub use braess :: *"
     }
   ],
   "domain_applied:src/applied/game_theory/evolutionary/graph_replicator.rs": [
@@ -2565,6 +2728,9 @@
       "signature": "pub trait ValuationDistribution { fn virtual_valuation (& self , _ : f64) -> f64 }"
     },
     {
+      "signature": "pub use quadrature :: *"
+    },
+    {
       "signature": "pub use rand :: distributions :: Distribution as RandDistribution"
     },
     {
@@ -2578,6 +2744,38 @@
     },
     {
       "signature": "pub use statrs :: statistics :: Distribution"
+    }
+  ],
+  "domain_applied:src/applied/grpo/controller.rs": [
+    {
+      "signature": "impl GrpoController { pub const fn new_untrained () -> Self }"
+    },
+    {
+      "signature": "impl GrpoController { pub fn act_deterministic (& self , _ : & [f64 ; POLICY_DIM]) -> f64 }"
+    },
+    {
+      "signature": "impl GrpoController { pub fn finish_group_update (& mut self , _ : GrpoUpdateParams) }"
+    },
+    {
+      "signature": "impl GrpoController { pub fn reset_untrained (& mut self) }"
+    },
+    {
+      "signature": "impl GrpoController { pub fn sample_and_record (& mut self , _ : usize , _ : usize , _ : & [f64 ; POLICY_DIM] , _ : & mut OxidizeRng ,) -> f64 }"
+    },
+    {
+      "signature": "pub const GRPO_GROUP_SIZE : usize"
+    },
+    {
+      "signature": "pub const POLICY_DIM : usize"
+    },
+    {
+      "signature": "pub const ROLLOUT_HORIZON : usize"
+    },
+    {
+      "signature": "pub struct GrpoController"
+    },
+    {
+      "signature": "pub struct GrpoUpdateParams"
     }
   ],
   "domain_applied:src/applied/grpo/formulas.rs": [
@@ -2621,6 +2819,23 @@
   "domain_applied:src/applied/grpo/metrics.rs": [
     {
       "signature": "pub fn pairwise_distance_bleu (_ : & str , _ : & str) -> f64"
+    }
+  ],
+  "domain_applied:src/applied/grpo/mod.rs": [
+    {
+      "signature": "pub use controller :: GRPO_GROUP_SIZE"
+    },
+    {
+      "signature": "pub use controller :: GrpoController"
+    },
+    {
+      "signature": "pub use controller :: GrpoUpdateParams"
+    },
+    {
+      "signature": "pub use controller :: POLICY_DIM"
+    },
+    {
+      "signature": "pub use controller :: ROLLOUT_HORIZON"
     }
   ],
   "domain_applied:src/applied/grpo/rewards.rs": [
@@ -3009,6 +3224,26 @@
       "signature": "pub struct BatemanModel"
     }
   ],
+  "domain_applied:src/applied/pharmacokinetics/closed_loop.rs": [
+    {
+      "signature": "impl PkClosedLoopTwin { pub fn features_and_bin (& self , _ : f64 , _ : f64) -> ([f64 ; 4] , usize) }"
+    },
+    {
+      "signature": "impl PkClosedLoopTwin { pub fn reset_in_place (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl PkClosedLoopTwin { pub fn step (& mut self , _ : f64 , _ : PkClosedLoopConfig , _ : & mut OxidizeRng ,) -> PlantStepOutput }"
+    },
+    {
+      "signature": "impl PkClosedLoopTwin { pub fn try_new (_ : PkClosedLoopConfig) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub struct PkClosedLoopConfig"
+    },
+    {
+      "signature": "pub struct PkClosedLoopTwin"
+    }
+  ],
   "domain_applied:src/applied/pharmacokinetics/enantiomer.rs": [
     {
       "signature": "impl EnantiomerModel { pub fn concentration_ir_multiple_doses (& self , _ : & [f64] , _ : f64) -> f64 }"
@@ -3089,6 +3324,12 @@
     },
     {
       "signature": "pub use bateman :: t_max"
+    },
+    {
+      "signature": "pub use closed_loop :: PkClosedLoopConfig"
+    },
+    {
+      "signature": "pub use closed_loop :: PkClosedLoopTwin"
     },
     {
       "signature": "pub use enantiomer :: EnantiomerModel"
@@ -4853,6 +5094,71 @@
       "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : AdvectedSpatialDiffusion < N > > TuringSystem < N , K , D , FusedEulerSolver > { pub fn try_step_advected (& mut self , _ : f64 , _ : & [f64] , _ : & [f64] ,) -> Result < () , crate :: biology :: reaction_diffusion :: ReactionDiffusionError > }"
     }
   ],
+  "domain_biology:src/biology/morphogenesis/dispersion.rs": [
+    {
+      "signature": "impl GrayScottRegime { pub const fn from_u8 (_ : u8) -> Self }"
+    },
+    {
+      "signature": "impl GrayScottRegime { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MorphogenesisRegime { pub const fn from_u8 (_ : u8) -> Self }"
+    },
+    {
+      "signature": "impl MorphogenesisRegime { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub const WASHOUT_VARIANCE_THRESHOLD : f64"
+    },
+    {
+      "signature": "pub enum GrayScottMinimapRegime"
+    },
+    {
+      "signature": "pub enum GrayScottRegime"
+    },
+    {
+      "signature": "pub enum MorphogenesisRegime"
+    },
+    {
+      "signature": "pub enum SchnakenbergRegime"
+    },
+    {
+      "signature": "pub fn classify_gray_scott (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> GrayScottMinimapRegime"
+    },
+    {
+      "signature": "pub fn classify_gray_scott_dispersion (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> DispersionCell"
+    },
+    {
+      "signature": "pub fn classify_schnakenberg (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> SchnakenbergRegime"
+    },
+    {
+      "signature": "pub fn classify_schnakenberg_dispersion (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> DispersionCell"
+    },
+    {
+      "signature": "pub fn gray_scott_fold_k (_ : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn gray_scott_hopf_f (_ : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn grid_u_variance (_ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub fn is_gray_scott_pattern_viable (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> bool"
+    },
+    {
+      "signature": "pub fn is_gray_scott_v_washed_out (_ : & [f64]) -> bool"
+    },
+    {
+      "signature": "pub fn is_pattern_forming_regime (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> bool"
+    },
+    {
+      "signature": "pub fn mode_growth_and_euler_amp (_ : [f64 ; 4] , _ : [f64 ; 2] , _ : f64 , _ : f64 ,) -> (f64 , f64 , bool)"
+    },
+    {
+      "signature": "pub struct DispersionCell"
+    }
+  ],
   "domain_biology:src/biology/morphogenesis/mod.rs": [
     {
       "signature": "impl < K : ReactionKinetics < 2 > , D : SpatialDiffusion < 2 > , S : TuringSolverStrategy < 2 > > TuringSystem < 2 , K , D , S > { pub fn u (& self) -> & [f64] }"
@@ -4898,6 +5204,57 @@
     },
     {
       "signature": "pub struct TuringSystem < const N : usize = 2 , K : ReactionKinetics < N > = SchnakenbergKinetics , D : SpatialDiffusion < N > = FiniteDifference1D , S : TuringSolverStrategy < N > = FusedEulerSolver , >"
+    },
+    {
+      "signature": "pub use dispersion :: DispersionCell"
+    },
+    {
+      "signature": "pub use dispersion :: GrayScottMinimapRegime"
+    },
+    {
+      "signature": "pub use dispersion :: GrayScottRegime"
+    },
+    {
+      "signature": "pub use dispersion :: MorphogenesisRegime"
+    },
+    {
+      "signature": "pub use dispersion :: SchnakenbergRegime"
+    },
+    {
+      "signature": "pub use dispersion :: WASHOUT_VARIANCE_THRESHOLD"
+    },
+    {
+      "signature": "pub use dispersion :: classify_gray_scott"
+    },
+    {
+      "signature": "pub use dispersion :: classify_gray_scott_dispersion"
+    },
+    {
+      "signature": "pub use dispersion :: classify_schnakenberg"
+    },
+    {
+      "signature": "pub use dispersion :: classify_schnakenberg_dispersion"
+    },
+    {
+      "signature": "pub use dispersion :: gray_scott_fold_k"
+    },
+    {
+      "signature": "pub use dispersion :: gray_scott_hopf_f"
+    },
+    {
+      "signature": "pub use dispersion :: grid_u_variance"
+    },
+    {
+      "signature": "pub use dispersion :: is_gray_scott_pattern_viable"
+    },
+    {
+      "signature": "pub use dispersion :: is_gray_scott_v_washed_out"
+    },
+    {
+      "signature": "pub use dispersion :: is_pattern_forming_regime"
+    },
+    {
+      "signature": "pub use dispersion :: mode_growth_and_euler_amp"
     },
     {
       "signature": "pub use reaction :: GrayScottKinetics"
@@ -8541,6 +8898,29 @@
       "signature": "pub fn specific_enthalpy (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
     }
   ],
+  "domain_physics:src/physics/high_energy/general_relativity/custom_metric.rs": [
+    {
+      "signature": "pub const MIN_REGULAR_LAPSE : f64"
+    },
+    {
+      "signature": "pub const MIN_REGULAR_THROAT : f64"
+    },
+    {
+      "signature": "pub fn build_lapse_static_metric < 'a > (_ : & 'a CompiledExpr , _ : f64 , _ : & 'a [f64] ,) -> StaticRiemannianMetric < impl Fn (& SVector < f64 , 4 >) -> Result < SMatrix < f64 , 4 , 4 > , TensorError > + 'a , 4 , >"
+    },
+    {
+      "signature": "pub fn build_wormhole_static_metric < 'a > (_ : & 'a CompiledExpr , _ : f64 , _ : & 'a [f64] ,) -> StaticRiemannianMetric < impl Fn (& SVector < f64 , 3 >) -> Result < SMatrix < f64 , 3 , 3 > , TensorError > + 'a , 3 , >"
+    },
+    {
+      "signature": "pub fn estimate_compiled_lapse_horizon (_ : Option < & CompiledExpr > , _ : & [f64] , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn eval_custom_lapse_lensing_cell (_ : GeodesicKind , _ : f64 , _ : f64 , _ : & CompiledExpr , _ : & [f64] , _ : f64 , _ : f64 ,) -> RadialAtlasSummary"
+    },
+    {
+      "signature": "pub fn eval_wormhole_lensing_cell (_ : GeodesicKind , _ : f64 , _ : f64 , _ : Option < (& CompiledExpr , & [f64]) > , _ : f64 , _ : f64 ,) -> RadialAtlasSummary"
+    }
+  ],
   "domain_physics:src/physics/high_energy/general_relativity/geodesic_bundle.rs": [
     {
       "signature": "impl SchwarzschildGeodesicBundle { pub fn copy_newtonian_trail (& self , _ : & mut [[f64 ; 2]]) -> usize }"
@@ -8626,10 +9006,48 @@
       "signature": "impl KerrEquatorialMetric { pub fn photon_orbit_radius (& self , _ : bool) -> f64 }"
     },
     {
+      "signature": "impl KerrEquatorialMetric { pub fn worldline_clock_dilation (& self , _ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError > }"
+    },
+    {
       "signature": "impl KerrEquatorialMetric { pub fn zamo_clock_dilation (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
     },
     {
       "signature": "pub struct KerrEquatorialMetric"
+    }
+  ],
+  "domain_physics:src/physics/high_energy/general_relativity/kerr_radial.rs": [
+    {
+      "signature": "impl LensingRegime { pub const fn from_u8 (_ : u8) -> Self }"
+    },
+    {
+      "signature": "impl LensingRegime { pub const fn label (self , _ : bool) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum LensingRegime"
+    },
+    {
+      "signature": "pub fn eval_kerr_lensing_cell (_ : GeodesicKind , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> RadialAtlasSummary"
+    },
+    {
+      "signature": "pub fn kerr_bpt_isco (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn kerr_prograde_critical_b (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn kerr_radial_acc_and_dphi (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub fn kerr_radial_rk4_step (_ : KerrRadialOrbitParams , _ : f64 , _ : f64 , _ : f64 ,) -> (f64 , f64 , f64)"
+    },
+    {
+      "signature": "pub fn kerr_veff (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct KerrRadialOrbitParams"
+    },
+    {
+      "signature": "pub struct RadialAtlasSummary"
     }
   ],
   "domain_physics:src/physics/high_energy/general_relativity/lensing.rs": [
@@ -8684,6 +9102,27 @@
   ],
   "domain_physics:src/physics/high_energy/general_relativity/mod.rs": [
     {
+      "signature": "pub use custom_metric :: MIN_REGULAR_LAPSE"
+    },
+    {
+      "signature": "pub use custom_metric :: MIN_REGULAR_THROAT"
+    },
+    {
+      "signature": "pub use custom_metric :: build_lapse_static_metric"
+    },
+    {
+      "signature": "pub use custom_metric :: build_wormhole_static_metric"
+    },
+    {
+      "signature": "pub use custom_metric :: estimate_compiled_lapse_horizon"
+    },
+    {
+      "signature": "pub use custom_metric :: eval_custom_lapse_lensing_cell"
+    },
+    {
+      "signature": "pub use custom_metric :: eval_wormhole_lensing_cell"
+    },
+    {
       "signature": "pub use geodesic_bundle :: GeodesicTrajectoryState"
     },
     {
@@ -8700,6 +9139,33 @@
     },
     {
       "signature": "pub use kerr :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use kerr_radial :: KerrRadialOrbitParams"
+    },
+    {
+      "signature": "pub use kerr_radial :: LensingRegime"
+    },
+    {
+      "signature": "pub use kerr_radial :: RadialAtlasSummary"
+    },
+    {
+      "signature": "pub use kerr_radial :: eval_kerr_lensing_cell"
+    },
+    {
+      "signature": "pub use kerr_radial :: kerr_bpt_isco"
+    },
+    {
+      "signature": "pub use kerr_radial :: kerr_prograde_critical_b"
+    },
+    {
+      "signature": "pub use kerr_radial :: kerr_radial_acc_and_dphi"
+    },
+    {
+      "signature": "pub use kerr_radial :: kerr_radial_rk4_step"
+    },
+    {
+      "signature": "pub use kerr_radial :: kerr_veff"
     },
     {
       "signature": "pub use lensing :: DEFAULT_DEFLECTION_BINS"
@@ -8739,6 +9205,57 @@
     },
     {
       "signature": "pub use schwarzschild :: photon_sphere_radius"
+    },
+    {
+      "signature": "pub use worldline :: BundleRay"
+    },
+    {
+      "signature": "pub use worldline :: MAX_BUNDLE_RAYS"
+    },
+    {
+      "signature": "pub use worldline :: MAX_TRAJECTORY_SAMPLES"
+    },
+    {
+      "signature": "pub use worldline :: TrajectorySample"
+    },
+    {
+      "signature": "pub use worldline :: compute_4d_clock_factors"
+    },
+    {
+      "signature": "pub use worldline :: initial_diagonal_4d_state"
+    },
+    {
+      "signature": "pub use worldline :: initial_kerr_4d_state"
+    },
+    {
+      "signature": "pub use worldline :: planar_velocity_beta"
+    },
+    {
+      "signature": "pub use worldline :: wormhole_initial_vel"
+    },
+    {
+      "signature": "pub use worldline_integrators :: WorldlineLaunchSpec"
+    },
+    {
+      "signature": "pub use worldline_integrators :: integrate_custom_lapse_worldline_into"
+    },
+    {
+      "signature": "pub use worldline_integrators :: integrate_custom_wormhole_worldline_into"
+    },
+    {
+      "signature": "pub use worldline_integrators :: integrate_kerr_worldline_into"
+    },
+    {
+      "signature": "pub use worldline_integrators :: integrate_photon_fan_bundle_into"
+    },
+    {
+      "signature": "pub use worldline_integrators :: integrate_schwarzschild_worldline_into"
+    },
+    {
+      "signature": "pub use worldline_integrators :: integrate_wormhole_worldline_into"
+    },
+    {
+      "signature": "pub use worldline_integrators :: refine_halt_4d"
     },
     {
       "signature": "pub use wormhole :: MorrisThorneWormhole"
@@ -8815,6 +9332,64 @@
       "signature": "pub struct SchwarzschildBlackHole"
     }
   ],
+  "domain_physics:src/physics/high_energy/general_relativity/worldline.rs": [
+    {
+      "signature": "impl BundleRay { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_BUNDLE_RAYS : usize"
+    },
+    {
+      "signature": "pub const MAX_TRAJECTORY_SAMPLES : usize"
+    },
+    {
+      "signature": "pub fn compute_4d_clock_factors (_ : Option < & SchwarzschildBlackHole > , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> (f64 , f64 , f64)"
+    },
+    {
+      "signature": "pub fn initial_diagonal_4d_state (_ : GeodesicKind , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> (SVector < f64 , 4 > , SVector < f64 , 4 > , f64)"
+    },
+    {
+      "signature": "pub fn initial_kerr_4d_state (_ : GeodesicKind , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> (SVector < f64 , 4 > , SVector < f64 , 4 > , f64)"
+    },
+    {
+      "signature": "pub fn planar_velocity_beta (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> [f64 ; 3]"
+    },
+    {
+      "signature": "pub fn wormhole_initial_vel (_ : GeodesicKind , _ : f64 , _ : f64 , _ : f64 ,) -> (f64 , f64 , f64 , f64)"
+    },
+    {
+      "signature": "pub struct BundleRay"
+    },
+    {
+      "signature": "pub struct TrajectorySample"
+    }
+  ],
+  "domain_physics:src/physics/high_energy/general_relativity/worldline_integrators.rs": [
+    {
+      "signature": "pub fn integrate_custom_lapse_worldline_into (_ : & WorldlineLaunchSpec , _ : & CompiledExpr , _ : & [f64] , _ : usize , _ : f64 , _ : & mut Vec < TrajectorySample > ,) -> (bool , f64)"
+    },
+    {
+      "signature": "pub fn integrate_custom_wormhole_worldline_into (_ : & WorldlineLaunchSpec , _ : & CompiledExpr , _ : & [f64] , _ : usize , _ : f64 , _ : & mut Vec < TrajectorySample > ,) -> (bool , f64)"
+    },
+    {
+      "signature": "pub fn integrate_kerr_worldline_into (_ : & WorldlineLaunchSpec , _ : usize , _ : f64 , _ : & mut Vec < TrajectorySample > ,) -> (bool , f64)"
+    },
+    {
+      "signature": "pub fn integrate_photon_fan_bundle_into < F > (_ : usize , _ : f64 , _ : f64 , _ : usize , _ : & mut [BundleRay] , _ : F ,) -> (usize , bool , f64) where F : FnMut (usize , f64 , & mut Vec < TrajectorySample >) -> (bool , f64) ,"
+    },
+    {
+      "signature": "pub fn integrate_schwarzschild_worldline_into (_ : & WorldlineLaunchSpec , _ : usize , _ : f64 , _ : & mut Vec < TrajectorySample > ,) -> (bool , f64)"
+    },
+    {
+      "signature": "pub fn integrate_wormhole_worldline_into (_ : & WorldlineLaunchSpec , _ : usize , _ : f64 , _ : & mut Vec < TrajectorySample > ,) -> (bool , f64)"
+    },
+    {
+      "signature": "pub fn refine_halt_4d < M > (_ : & GeodesicSystem < M , 4 > , _ : & mut RungeKutta4 < ArrayState < 8 > > , _ : f64 , _ : & mut ArrayState < 8 > , _ : f64 ,) -> (bool , f64) where M : StaticMetric < 4 > , GeodesicSystem < M , 4 > : OdeSystem < ArrayState < 8 > > ,"
+    },
+    {
+      "signature": "pub struct WorldlineLaunchSpec"
+    }
+  ],
   "domain_physics:src/physics/high_energy/general_relativity/wormhole.rs": [
     {
       "signature": "impl MorrisThorneWormhole { pub fn areal_radius (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
@@ -8837,6 +9412,9 @@
   ],
   "domain_physics:src/physics/high_energy/mod.rs": [
     {
+      "signature": "pub use general_relativity :: BundleRay"
+    },
+    {
       "signature": "pub use general_relativity :: DEFAULT_DEFLECTION_BINS"
     },
     {
@@ -8858,13 +9436,31 @@
       "signature": "pub use general_relativity :: KerrEquatorialMetric"
     },
     {
+      "signature": "pub use general_relativity :: KerrRadialOrbitParams"
+    },
+    {
       "signature": "pub use general_relativity :: LensedRayHit"
     },
     {
       "signature": "pub use general_relativity :: LensingMetricSpec"
     },
     {
+      "signature": "pub use general_relativity :: LensingRegime"
+    },
+    {
+      "signature": "pub use general_relativity :: MAX_BUNDLE_RAYS"
+    },
+    {
       "signature": "pub use general_relativity :: MAX_GEODESIC_TRAJECTORIES"
+    },
+    {
+      "signature": "pub use general_relativity :: MAX_TRAJECTORY_SAMPLES"
+    },
+    {
+      "signature": "pub use general_relativity :: MIN_REGULAR_LAPSE"
+    },
+    {
+      "signature": "pub use general_relativity :: MIN_REGULAR_THROAT"
     },
     {
       "signature": "pub use general_relativity :: MorrisThorneWormhole"
@@ -8873,13 +9469,31 @@
       "signature": "pub use general_relativity :: NewtonianOrbitState"
     },
     {
+      "signature": "pub use general_relativity :: RadialAtlasSummary"
+    },
+    {
       "signature": "pub use general_relativity :: SchwarzschildBlackHole"
     },
     {
       "signature": "pub use general_relativity :: SchwarzschildGeodesicBundle"
     },
     {
+      "signature": "pub use general_relativity :: TrajectorySample"
+    },
+    {
+      "signature": "pub use general_relativity :: WorldlineLaunchSpec"
+    },
+    {
+      "signature": "pub use general_relativity :: build_lapse_static_metric"
+    },
+    {
+      "signature": "pub use general_relativity :: build_wormhole_static_metric"
+    },
+    {
       "signature": "pub use general_relativity :: combined_clock_rate"
+    },
+    {
+      "signature": "pub use general_relativity :: compute_4d_clock_factors"
     },
     {
       "signature": "pub use general_relativity :: critical_impact_parameter"
@@ -8888,13 +9502,73 @@
       "signature": "pub use general_relativity :: effective_potential"
     },
     {
+      "signature": "pub use general_relativity :: estimate_compiled_lapse_horizon"
+    },
+    {
+      "signature": "pub use general_relativity :: eval_custom_lapse_lensing_cell"
+    },
+    {
+      "signature": "pub use general_relativity :: eval_kerr_lensing_cell"
+    },
+    {
+      "signature": "pub use general_relativity :: eval_wormhole_lensing_cell"
+    },
+    {
       "signature": "pub use general_relativity :: flamm_paraboloid_z"
+    },
+    {
+      "signature": "pub use general_relativity :: initial_diagonal_4d_state"
+    },
+    {
+      "signature": "pub use general_relativity :: initial_kerr_4d_state"
+    },
+    {
+      "signature": "pub use general_relativity :: integrate_custom_lapse_worldline_into"
+    },
+    {
+      "signature": "pub use general_relativity :: integrate_custom_wormhole_worldline_into"
+    },
+    {
+      "signature": "pub use general_relativity :: integrate_kerr_worldline_into"
+    },
+    {
+      "signature": "pub use general_relativity :: integrate_photon_fan_bundle_into"
+    },
+    {
+      "signature": "pub use general_relativity :: integrate_schwarzschild_worldline_into"
+    },
+    {
+      "signature": "pub use general_relativity :: integrate_wormhole_worldline_into"
+    },
+    {
+      "signature": "pub use general_relativity :: kerr_bpt_isco"
+    },
+    {
+      "signature": "pub use general_relativity :: kerr_prograde_critical_b"
+    },
+    {
+      "signature": "pub use general_relativity :: kerr_radial_acc_and_dphi"
+    },
+    {
+      "signature": "pub use general_relativity :: kerr_radial_rk4_step"
+    },
+    {
+      "signature": "pub use general_relativity :: kerr_veff"
     },
     {
       "signature": "pub use general_relativity :: newtonian_periapsis_radius"
     },
     {
       "signature": "pub use general_relativity :: photon_sphere_radius"
+    },
+    {
+      "signature": "pub use general_relativity :: planar_velocity_beta"
+    },
+    {
+      "signature": "pub use general_relativity :: refine_halt_4d"
+    },
+    {
+      "signature": "pub use general_relativity :: wormhole_initial_vel"
     },
     {
       "signature": "pub use math_commons :: constants :: C"
@@ -9360,6 +10034,9 @@
     },
     {
       "signature": "pub struct Fft2dWorkspace"
+    },
+    {
+      "signature": "pub use kspace :: *"
     }
   ],
   "domain_physics:src/physics/mri/scanner.rs": [
@@ -10131,6 +10808,32 @@
       "signature": "pub struct OrbitalQuantumNumbers"
     }
   ],
+  "domain_physics:src/physics/quantum/lattice_scattering.rs": [
+    {
+      "signature": "pub const DEFAULT_PIXEL_K_SUPERSAMPLES : usize"
+    },
+    {
+      "signature": "pub const ROUNDING_K_MICRO_DELTA : f64"
+    },
+    {
+      "signature": "pub enum LatticePotentialKind"
+    },
+    {
+      "signature": "pub fn classify_lattice_scattering_regime (_ : f64 , _ : f64 , _ : f64) -> u8"
+    },
+    {
+      "signature": "pub fn compute_lattice_steady_transmission_from_slice (_ : & [f64] , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn exact_single_k_lattice_transmission (_ : & [f64] , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn populate_lattice_potential_into (_ : LatticePotentialKind , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : Option < & CompiledExpr > , _ : & [Option < f64 >] , _ : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub fn supersampled_lattice_transmission (_ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> f64"
+    }
+  ],
   "domain_physics:src/physics/quantum/mod.rs": [
     {
       "signature": "pub use coupling :: clebsch_gordan"
@@ -10182,6 +10885,30 @@
     },
     {
       "signature": "pub use hydrogenic :: hydrogenic_radial_wavefunction"
+    },
+    {
+      "signature": "pub use lattice_scattering :: DEFAULT_PIXEL_K_SUPERSAMPLES"
+    },
+    {
+      "signature": "pub use lattice_scattering :: LatticePotentialKind"
+    },
+    {
+      "signature": "pub use lattice_scattering :: ROUNDING_K_MICRO_DELTA"
+    },
+    {
+      "signature": "pub use lattice_scattering :: classify_lattice_scattering_regime"
+    },
+    {
+      "signature": "pub use lattice_scattering :: compute_lattice_steady_transmission_from_slice"
+    },
+    {
+      "signature": "pub use lattice_scattering :: exact_single_k_lattice_transmission"
+    },
+    {
+      "signature": "pub use lattice_scattering :: populate_lattice_potential_into"
+    },
+    {
+      "signature": "pub use lattice_scattering :: supersampled_lattice_transmission"
     },
     {
       "signature": "pub use scattering :: TransferMatrix2x2"
@@ -10548,6 +11275,26 @@
       "signature": "pub struct FrohlichVertex"
     }
   ],
+  "domain_physics:src/physics/solid_state/ising_atlas.rs": [
+    {
+      "signature": "impl IsingAtlasRegime { pub const fn from_u8 (_ : u8) -> Self }"
+    },
+    {
+      "signature": "impl IsingAtlasRegime { pub const fn label (self , _ : bool) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum IsingAtlasRegime"
+    },
+    {
+      "signature": "pub fn eval_ising_order_parameter (_ : f64 , _ : f64 , _ : f64) -> (IsingAtlasRegime , f64 , f64)"
+    },
+    {
+      "signature": "pub fn eval_spatial_dilemma_cell (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> (IsingAtlasRegime , f64 , f64)"
+    },
+    {
+      "signature": "pub fn onsager_critical_temp (_ : f64) -> f64"
+    }
+  ],
   "domain_physics:src/physics/solid_state/lattice.rs": [
     {
       "signature": "pub struct BodyCenteredCubic"
@@ -10574,6 +11321,20 @@
     },
     {
       "signature": "pub fn magnon_dispersion (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64"
+    }
+  ],
+  "domain_physics:src/physics/solid_state/mod.rs": [
+    {
+      "signature": "pub use ising_atlas :: IsingAtlasRegime"
+    },
+    {
+      "signature": "pub use ising_atlas :: eval_ising_order_parameter"
+    },
+    {
+      "signature": "pub use ising_atlas :: eval_spatial_dilemma_cell"
+    },
+    {
+      "signature": "pub use ising_atlas :: onsager_critical_temp"
     }
   ],
   "domain_physics:src/physics/solid_state/phonons.rs": [
@@ -17018,6 +17779,9 @@
       "signature": "pub use pure_math :: error :: TransformError"
     },
     {
+      "signature": "pub use pure_math :: error :: WardropError"
+    },
+    {
       "signature": "pub use pure_math :: error :: ZipError"
     }
   ],
@@ -17026,7 +17790,16 @@
       "signature": "pub mod applied"
     },
     {
+      "signature": "pub mod applied { pub mod engineering { pub use domain_applied :: applied :: engineering :: * } }"
+    },
+    {
+      "signature": "pub mod applied { pub mod engineering { pub use domain_engineering :: engineering :: cnc :: * } }"
+    },
+    {
       "signature": "pub mod applied { pub mod engineering { pub use domain_engineering :: engineering :: cnc } }"
+    },
+    {
+      "signature": "pub mod applied { pub mod engineering { pub use domain_engineering :: engineering :: uart :: * } }"
     },
     {
       "signature": "pub mod applied { pub mod engineering { pub use domain_engineering :: engineering :: uart } }"
@@ -17035,7 +17808,43 @@
       "signature": "pub mod applied { pub mod engineering }"
     },
     {
-      "signature": "pub mod applied { pub use domain_applied :: applied :: * }"
+      "signature": "pub mod applied { pub use domain_applied :: applied :: algorithms }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: cannibalism }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: clinical_trials }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: error }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: favoritism }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: freesurfer }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: game_theory }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: grpo }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: isosurface }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: lorahub }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: pharmacokinetics }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: portfolio }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: win_ratio }"
     },
     {
       "signature": "pub mod applied { pub use domain_engineering :: engineering :: battery_degradation }"
@@ -17435,6 +18244,9 @@
       "signature": "pub use crate :: pure_math :: graph_theory :: GraphTheoryError"
     },
     {
+      "signature": "pub use crate :: pure_math :: graph_theory :: wardrop :: WardropError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: hyperbolic :: HyperbolicError"
     },
     {
@@ -17636,6 +18448,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: TransformError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: WardropError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ZipError } }"
@@ -21452,6 +22267,21 @@
     },
     {
       "signature": "pub use minimum_spanning_tree :: minimum_spanning_tree as solve_minimum_spanning_tree"
+    },
+    {
+      "signature": "pub use wardrop :: AffineLatency"
+    },
+    {
+      "signature": "pub use wardrop :: FrankWolfeScratch"
+    },
+    {
+      "signature": "pub use wardrop :: WardropError"
+    },
+    {
+      "signature": "pub use wardrop :: WardropSummary"
+    },
+    {
+      "signature": "pub use wardrop :: solve_wardrop_in_place"
     }
   ],
   "pure_math:src/pure_math/graph_theory/parameters/degree.rs": [
@@ -21496,6 +22326,38 @@
     },
     {
       "signature": "pub struct TreewidthScratch"
+    }
+  ],
+  "pure_math:src/pure_math/graph_theory/wardrop.rs": [
+    {
+      "signature": "impl AffineLatency { pub fn clamped (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl AffineLatency { pub fn eval (self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl AffineLatency { pub fn is_valid (self) -> bool }"
+    },
+    {
+      "signature": "impl FrankWolfeScratch { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl FrankWolfeScratch { pub fn prepare_topology < I : IntoIterator < Item = usize > > (& mut self , _ : I , _ : & [(usize , usize , f64)] , _ : & [AffineLatency] ,) }"
+    },
+    {
+      "signature": "pub enum WardropError"
+    },
+    {
+      "signature": "pub fn solve_wardrop_in_place (_ : & mut FrankWolfeScratch , _ : usize , _ : usize , _ : f64 , _ : Option < usize > , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < WardropSummary , WardropError >"
+    },
+    {
+      "signature": "pub struct AffineLatency"
+    },
+    {
+      "signature": "pub struct FrankWolfeScratch"
+    },
+    {
+      "signature": "pub struct WardropSummary"
     }
   ],
   "pure_math:src/pure_math/hyperbolic/billiards.rs": [
@@ -25046,6 +25908,48 @@
     },
     {
       "signature": "pub use ensemble :: scan_parrondo_phase_region"
+    },
+    {
+      "signature": "pub use jump_ssa :: ParrondoGillespieSystem"
+    },
+    {
+      "signature": "pub use jump_ssa :: ParrondoJumpMetrics"
+    },
+    {
+      "signature": "pub use jump_ssa :: ParrondoSsaState"
+    },
+    {
+      "signature": "pub use jump_ssa :: ParrondoVariant"
+    },
+    {
+      "signature": "pub use jump_ssa :: ParrondoWalker"
+    },
+    {
+      "signature": "pub use jump_ssa :: advance_parrondo_mix_walkers"
+    },
+    {
+      "signature": "pub use jump_ssa :: advance_parrondo_walkers"
+    },
+    {
+      "signature": "pub use jump_ssa :: compute_abb_tensor_metrics"
+    },
+    {
+      "signature": "pub use jump_ssa :: compute_parrondo_jump_metrics"
+    },
+    {
+      "signature": "pub use jump_ssa :: evaluate_jump_ratchet_stack"
+    },
+    {
+      "signature": "pub use jump_ssa :: next_parrondo_state"
+    },
+    {
+      "signature": "pub use jump_ssa :: parrondo_variant_win_probs"
+    },
+    {
+      "signature": "pub use stack :: StackParrondoSummary"
+    },
+    {
+      "signature": "pub use stack :: solve_parrondo_ratchet_stack"
     }
   ],
   "pure_math:src/pure_math/statistics/markov/parrondo/ensemble.rs": [
@@ -25099,6 +26003,52 @@
     },
     {
       "signature": "pub struct ParrondoPhasePoint"
+    }
+  ],
+  "pure_math:src/pure_math/statistics/markov/parrondo/jump_ssa.rs": [
+    {
+      "signature": "pub enum ParrondoVariant"
+    },
+    {
+      "signature": "pub fn advance_parrondo_mix_walkers (_ : & mut [ParrondoWalker] , _ : & mut OxidizeRng , _ : ParrondoVariant , _ : & [f64 ; 4] , _ : & [f64 ; 4] , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn advance_parrondo_walkers (_ : & mut [ParrondoWalker] , _ : & mut OxidizeRng , _ : ParrondoVariant , _ : & [f64 ; 4] ,) -> f64"
+    },
+    {
+      "signature": "pub fn compute_abb_tensor_metrics (_ : & DMatrix < f64 > , _ : & DMatrix < f64 > , _ : & [f64 ; 4] , _ : & [f64 ; 4] ,) -> Result < (f64 , f64 , f64) >"
+    },
+    {
+      "signature": "pub fn compute_parrondo_jump_metrics (_ : ParrondoVariant , _ : f64 , _ : f64 ,) -> Result < ParrondoJumpMetrics >"
+    },
+    {
+      "signature": "pub fn evaluate_jump_ratchet_stack (_ : ParrondoVariant , _ : f64 , _ : f64 , _ : f64 ,) -> (f64 , f64 , f64 , f64 , f64)"
+    },
+    {
+      "signature": "pub fn next_parrondo_state (_ : ParrondoVariant , _ : usize , _ : bool) -> usize"
+    },
+    {
+      "signature": "pub fn parrondo_variant_win_probs (_ : ParrondoVariant , _ : f64 ,) -> ([f64 ; 4] , [f64 ; 4] , usize)"
+    },
+    {
+      "signature": "pub struct ParrondoGillespieSystem"
+    },
+    {
+      "signature": "pub struct ParrondoJumpMetrics"
+    },
+    {
+      "signature": "pub struct ParrondoSsaState"
+    },
+    {
+      "signature": "pub struct ParrondoWalker"
+    }
+  ],
+  "pure_math:src/pure_math/statistics/markov/parrondo/stack.rs": [
+    {
+      "signature": "pub fn solve_parrondo_ratchet_stack (_ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & [ParrondoGame] ,) -> Option < StackParrondoSummary >"
+    },
+    {
+      "signature": "pub struct StackParrondoSummary"
     }
   ],
   "pure_math:src/pure_math/statistics/markov/tensor.rs": [

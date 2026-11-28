@@ -4,10 +4,13 @@
 
 pub mod canvas;
 pub mod controllers;
-pub mod ekf;
+/// Re-exports verified EKF and nonlinear plant tangent models from `domain_applied`.
+#[cfg(test)]
+pub mod ekf {
+    pub use math_explorer::applied::algorithms::kalman::*;
+}
 pub mod pipeline;
 pub mod plants;
-pub mod plants_pk;
 pub mod runner;
 pub mod state;
 #[cfg(test)]

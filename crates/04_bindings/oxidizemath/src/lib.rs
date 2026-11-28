@@ -23,12 +23,20 @@ pub use domain_ai::ai;
 #[cfg(feature = "applied")]
 pub mod applied {
     //! Applied mathematics, scientific computing, finance, and clinical statistics.
-    pub use ::domain_applied::applied::*;
+    pub use ::domain_applied::applied::{
+        algorithms, cannibalism, clinical_trials, error, favoritism, freesurfer, game_theory, grpo,
+        isosurface, lorahub, pharmacokinetics, portfolio, win_ratio,
+    };
     #[cfg(feature = "engineering")]
     pub use ::domain_engineering::engineering::battery_degradation;
-    /// Legacy re-export of manufacturing and embedded calculators from `domain_engineering`.
-    #[cfg(feature = "engineering")]
+    /// Closed-loop control plants and (with `engineering`) manufacturing and embedded calculators.
     pub mod engineering {
+        pub use ::domain_applied::applied::engineering::*;
+        #[cfg(feature = "engineering")]
+        pub use ::domain_engineering::engineering::cnc::*;
+        #[cfg(feature = "engineering")]
+        pub use ::domain_engineering::engineering::uart::*;
+        #[cfg(feature = "engineering")]
         pub use ::domain_engineering::engineering::{cnc, uart};
     }
 }

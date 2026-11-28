@@ -10,7 +10,7 @@ use crate::pure_math::{
         transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
-    graph_theory::GraphTheoryError,
+    graph_theory::{GraphTheoryError, wardrop::WardropError},
     hyperbolic::HyperbolicError,
     knot_theory::KnotError,
     number_theory::ambs::AmbsError,
@@ -215,6 +215,18 @@ impl Diagnostic for GraphTheoryError {
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         visit_named_error(visitor, "GraphTheoryError", self);
+    }
+}
+
+impl Diagnostic for WardropError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "WardropError", self);
     }
 }
 

@@ -4,7 +4,8 @@
 
 pub use super::challenge::FastCvKalman;
 use super::challenge::{
-    should_trigger_scheduled_cough, step_physical_beam_delay, GEOGRAPHIC_MISS_CEILING_MM,
+    fast_cv_from_tracking_filter, should_trigger_scheduled_cough, step_physical_beam_delay,
+    GEOGRAPHIC_MISS_CEILING_MM,
 };
 use super::spectra::{build_fmcw_config, compute_range_spectra, SpectralSnapshot};
 use super::state::RadarGatingState;
@@ -109,7 +110,7 @@ impl RadarPipeline {
         let wavelength_m = fmcw.wavelength();
         let model = ConstantVelocityModel::new(state.kalman_process_var, state.kalman_meas_var);
         let tracking_filter = TrackingFilter::new(0.0, SIM_DT, model);
-        let fast_kalman = FastCvKalman::from_tracking_filter(
+        let fast_kalman = fast_cv_from_tracking_filter(
             &tracking_filter,
             SIM_DT,
             state.kalman_process_var,
@@ -211,7 +212,7 @@ impl RadarPipeline {
         for _ in 0..HISTORY_LEN {
             self.seed_step_with_tracking_filter(state);
         }
-        self.fast_kalman = FastCvKalman::from_tracking_filter(
+        self.fast_kalman = fast_cv_from_tracking_filter(
             &self.tracking_filter,
             SIM_DT,
             state.kalman_process_var,

@@ -10,17 +10,30 @@
 //! - [`MorrisThorneWormhole`] (`StaticMetric<3>`): horizon-free traversable wormhole in proper
 //!   radial coordinates $(ct, l, \varphi)$ with isometric 3D embedding diagrams.
 
+pub mod custom_metric;
 pub mod geodesic_bundle;
 pub mod kerr;
+pub mod kerr_radial;
 pub mod lensing;
 pub mod schwarzschild;
+pub mod worldline;
+pub mod worldline_integrators;
 pub mod wormhole;
 
+pub use custom_metric::{
+    MIN_REGULAR_LAPSE, MIN_REGULAR_THROAT, build_lapse_static_metric, build_wormhole_static_metric,
+    estimate_compiled_lapse_horizon, eval_custom_lapse_lensing_cell, eval_wormhole_lensing_cell,
+};
 pub use geodesic_bundle::{
     GeodesicTrajectoryState, MAX_GEODESIC_TRAJECTORIES, NewtonianOrbitState,
     SchwarzschildGeodesicBundle, newtonian_periapsis_radius,
 };
 pub use kerr::KerrEquatorialMetric;
+pub use kerr_radial::{
+    KerrRadialOrbitParams, LensingRegime, RadialAtlasSummary, eval_kerr_lensing_cell,
+    kerr_bpt_isco, kerr_prograde_critical_b, kerr_radial_acc_and_dphi, kerr_radial_rk4_step,
+    kerr_veff,
+};
 pub use lensing::{
     DEFAULT_DEFLECTION_BINS, DeflectionSample, DeflectionTable, EINSTEIN_RING_IMPACT_FACTOR,
     LensedRayHit, LensingMetricSpec,
@@ -28,6 +41,16 @@ pub use lensing::{
 pub use schwarzschild::{
     GeodesicKind, SchwarzschildBlackHole, combined_clock_rate, critical_impact_parameter,
     effective_potential, flamm_paraboloid_z, photon_sphere_radius,
+};
+pub use worldline::{
+    BundleRay, MAX_BUNDLE_RAYS, MAX_TRAJECTORY_SAMPLES, TrajectorySample, compute_4d_clock_factors,
+    initial_diagonal_4d_state, initial_kerr_4d_state, planar_velocity_beta, wormhole_initial_vel,
+};
+pub use worldline_integrators::{
+    WorldlineLaunchSpec, integrate_custom_lapse_worldline_into,
+    integrate_custom_wormhole_worldline_into, integrate_kerr_worldline_into,
+    integrate_photon_fan_bundle_into, integrate_schwarzschild_worldline_into,
+    integrate_wormhole_worldline_into, refine_halt_4d,
 };
 pub use wormhole::MorrisThorneWormhole;
 

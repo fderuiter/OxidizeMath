@@ -17,6 +17,9 @@
 /// Includes McKendrick-von Foerster equations.
 pub mod cannibalism;
 
+/// Closed-loop stabilization and UPO control primitives (`upo_control`).
+pub mod engineering;
+
 /// A satirical yet rigorously implemented model to calculate a "Favoritism Score"
 /// for children based on wealth, social utility, and proximity.
 pub mod favoritism;

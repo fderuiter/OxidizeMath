@@ -7,6 +7,11 @@ pub use rand::distributions::Distribution as RandDistribution;
 pub use statrs::distribution::{self, Continuous, ContinuousCDF};
 pub use statrs::statistics::Distribution;
 
+/// Zero-allocation Gauss-Legendre Myerson revenue quadrature and Bayes-Nash bid-shading evaluators.
+#[path = "mechanism_design_quadrature.rs"]
+pub mod quadrature;
+pub use quadrature::*;
+
 /// Represents a distribution of bidder valuations.
 ///
 /// In Mechanism Design, particularly for auction theory, we often need to analyze properties
