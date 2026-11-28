@@ -2706,6 +2706,7 @@ name = "math_scalars"
 version = "0.4.0"
 dependencies = [
  "bytemuck",
+ "dashu",
  "libm",
  "math_diagnostics",
  "math_memory",

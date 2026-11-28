@@ -120,6 +120,7 @@ impl_error_from!(@cfg "pure_math":
     KalmanError => Kalman,
     KellyError => Kelly,
     KnotError => Knot,
+    LaurentError => Laurent,
     LinearAlgebraError => LinearAlgebra,
     MarketPricingError => MarketPricing,
     MarkovError => Markov,

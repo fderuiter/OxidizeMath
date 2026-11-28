@@ -3,7 +3,7 @@ use super::{
     MatchModelError, NumberTheoryError, OuError, TdaError, ZipError,
 };
 use crate::pure_math::{
-    algebra::{BraidError, linear_algebra::numerical::LinearAlgebraError},
+    algebra::{BraidError, LaurentError, linear_algebra::numerical::LinearAlgebraError},
     analysis::{
         evolution::EvolutionError, evolutionary::GameTheoryError, kalman::KalmanError,
         optimization::OptimizationError, roots::AnalysisError, stochastic::StochasticError,
@@ -317,6 +317,18 @@ impl Diagnostic for BraidError {
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         visit_named_error(visitor, "BraidError", self);
+    }
+}
+
+impl Diagnostic for LaurentError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "LaurentError", self);
     }
 }
 

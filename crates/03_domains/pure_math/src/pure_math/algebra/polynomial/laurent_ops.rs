@@ -2,7 +2,7 @@
 
 // [cite:knot_braid_topology]
 
-use super::laurent::LaurentPolynomial;
+use super::laurent::{LaurentError, LaurentPolynomial, MAX_LAURENT_SPAN};
 use crate::pure_math::algebra::traits::Ring;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -44,64 +44,173 @@ impl<T: Ring> Ring for LaurentPolynomial<T> {
 }
 
 #[verified_engine::verified]
-fn combine_linear<T: Ring>(
+pub(super) fn try_combine_linear<T: Ring>(
     lhs: &LaurentPolynomial<T>,
     rhs: &LaurentPolynomial<T>,
     subtract: bool,
-) -> LaurentPolynomial<T> {
+) -> Result<LaurentPolynomial<T>, LaurentError> {
     if lhs.coeffs.is_empty() {
-        return if subtract { -rhs } else { rhs.clone() };
+        return Ok(if subtract { -rhs } else { rhs.clone() });
     }
     if rhs.coeffs.is_empty() {
-        return lhs.clone();
+        return Ok(lhs.clone());
     }
     let min_e = lhs.min_exp.min(rhs.min_exp);
-    let max_lhs = lhs.min_exp + (lhs.coeffs.len() as i32) - 1;
-    let max_rhs = rhs.min_exp + (rhs.coeffs.len() as i32) - 1;
+    let max_lhs = lhs.max_degree().ok_or(LaurentError::ExponentOverflow)?;
+    let max_rhs = rhs.max_degree().ok_or(LaurentError::ExponentOverflow)?;
     let max_e = max_lhs.max(max_rhs);
-    let len = (max_e - min_e) as usize + 1;
+    let len = super::laurent_checked::checked_span_len(min_e, max_e)?;
     let mut out = vec![T::zero(); len];
-
-    let off_l = (lhs.min_exp - min_e) as usize;
+    let off_l = usize::try_from(i64::from(lhs.min_exp) - i64::from(min_e))
+        .map_err(|_| LaurentError::ExponentOverflow)?;
     for (i, c) in lhs.coeffs.iter().enumerate() {
-        out[off_l + i] += c.clone();
+        out[off_l + i] = c.clone();
     }
-    let off_r = (rhs.min_exp - min_e) as usize;
+    let off_r = usize::try_from(i64::from(rhs.min_exp) - i64::from(min_e))
+        .map_err(|_| LaurentError::ExponentOverflow)?;
     for (i, c) in rhs.coeffs.iter().enumerate() {
-        if subtract {
-            out[off_r + i] -= c.clone();
+        out[off_r + i] = if subtract {
+            out[off_r + i].ring_ref_sub(c)
         } else {
-            out[off_r + i] += c.clone();
-        }
+            out[off_r + i].ring_ref_add(c)
+        };
     }
-    let res = LaurentPolynomial::new(min_e, out);
-    debug_assert!(res.coeffs.is_empty() || !res.coeffs[0].is_zero());
-    debug_assert!(res.coeffs.len() <= len);
-    res
+    LaurentPolynomial::try_new(min_e, out)
 }
 
 #[verified_engine::verified]
-fn convolve<T: Ring>(
+pub(super) fn checked_combine_i64(
+    lhs: &LaurentPolynomial<i64>,
+    rhs: &LaurentPolynomial<i64>,
+    subtract: bool,
+) -> Result<LaurentPolynomial<i64>, LaurentError> {
+    if lhs.coeffs.is_empty() {
+        return if subtract {
+            rhs.checked_neg()
+        } else {
+            Ok(rhs.clone())
+        };
+    }
+    if rhs.coeffs.is_empty() {
+        return Ok(lhs.clone());
+    }
+    let min_e = lhs.min_exp.min(rhs.min_exp);
+    let max_lhs = lhs.max_degree().ok_or(LaurentError::ExponentOverflow)?;
+    let max_rhs = rhs.max_degree().ok_or(LaurentError::ExponentOverflow)?;
+    let max_e = max_lhs.max(max_rhs);
+    let len = super::laurent_checked::checked_span_len(min_e, max_e)?;
+    let mut out = vec![0_i64; len];
+    let off_l = usize::try_from(i64::from(lhs.min_exp) - i64::from(min_e))
+        .map_err(|_| LaurentError::ExponentOverflow)?;
+    out[off_l..(off_l + lhs.coeffs.len())].copy_from_slice(&lhs.coeffs);
+    let off_r = usize::try_from(i64::from(rhs.min_exp) - i64::from(min_e))
+        .map_err(|_| LaurentError::ExponentOverflow)?;
+    for (i, &c) in rhs.coeffs.iter().enumerate() {
+        let cur = out[off_r + i];
+        out[off_r + i] = if subtract {
+            cur.checked_sub(c)
+                .ok_or(LaurentError::CoefficientOverflow)?
+        } else {
+            cur.checked_add(c)
+                .ok_or(LaurentError::CoefficientOverflow)?
+        };
+    }
+    LaurentPolynomial::try_new(min_e, out)
+}
+
+#[verified_engine::verified]
+pub(super) fn try_convolve<T: Ring>(
     lhs: &LaurentPolynomial<T>,
     rhs: &LaurentPolynomial<T>,
-) -> LaurentPolynomial<T> {
+) -> Result<LaurentPolynomial<T>, LaurentError> {
     if lhs.coeffs.is_empty() || rhs.coeffs.is_empty() {
-        return LaurentPolynomial::zero();
+        return Ok(LaurentPolynomial::zero());
     }
-    let out_len = lhs.coeffs.len() + rhs.coeffs.len() - 1;
+    let out_len = lhs
+        .coeffs
+        .len()
+        .checked_add(rhs.coeffs.len())
+        .and_then(|s| s.checked_sub(1))
+        .ok_or(LaurentError::ExponentOverflow)?;
+    if out_len > MAX_LAURENT_SPAN {
+        return Err(LaurentError::SpanTooLarge {
+            span: out_len,
+            max: MAX_LAURENT_SPAN,
+        });
+    }
+    let min_e = lhs
+        .min_exp
+        .checked_add(rhs.min_exp)
+        .ok_or(LaurentError::ExponentOverflow)?;
     let mut out = vec![T::zero(); out_len];
     for (i, c1) in lhs.coeffs.iter().enumerate() {
         if c1.is_zero() {
             continue;
         }
         for (j, c2) in rhs.coeffs.iter().enumerate() {
-            out[i + j] += c1.clone() * c2.clone();
+            let prod = c1.ring_ref_mul(c2);
+            out[i + j] = out[i + j].ring_ref_add(&prod);
         }
     }
-    let res = LaurentPolynomial::new(lhs.min_exp + rhs.min_exp, out);
-    debug_assert!(res.coeffs.len() <= out_len);
-    debug_assert!(res.coeffs.is_empty() || !res.coeffs[0].is_zero());
-    res
+    LaurentPolynomial::try_new(min_e, out)
+}
+
+#[verified_engine::verified]
+pub(super) fn checked_convolve_i64(
+    lhs: &LaurentPolynomial<i64>,
+    rhs: &LaurentPolynomial<i64>,
+) -> Result<LaurentPolynomial<i64>, LaurentError> {
+    if lhs.coeffs.is_empty() || rhs.coeffs.is_empty() {
+        return Ok(LaurentPolynomial::zero());
+    }
+    let out_len = lhs
+        .coeffs
+        .len()
+        .checked_add(rhs.coeffs.len())
+        .and_then(|s| s.checked_sub(1))
+        .ok_or(LaurentError::ExponentOverflow)?;
+    if out_len > MAX_LAURENT_SPAN {
+        return Err(LaurentError::SpanTooLarge {
+            span: out_len,
+            max: MAX_LAURENT_SPAN,
+        });
+    }
+    let min_e = lhs
+        .min_exp
+        .checked_add(rhs.min_exp)
+        .ok_or(LaurentError::ExponentOverflow)?;
+    let mut out = vec![0_i64; out_len];
+    for (i, &c1) in lhs.coeffs.iter().enumerate() {
+        if c1 == 0 {
+            continue;
+        }
+        for (j, &c2) in rhs.coeffs.iter().enumerate() {
+            let prod = c1
+                .checked_mul(c2)
+                .ok_or(LaurentError::CoefficientOverflow)?;
+            out[i + j] = out[i + j]
+                .checked_add(prod)
+                .ok_or(LaurentError::CoefficientOverflow)?;
+        }
+    }
+    LaurentPolynomial::try_new(min_e, out)
+}
+
+#[inline]
+fn combine_linear<T: Ring>(
+    lhs: &LaurentPolynomial<T>,
+    rhs: &LaurentPolynomial<T>,
+    subtract: bool,
+) -> LaurentPolynomial<T> {
+    try_combine_linear(lhs, rhs, subtract).expect("LaurentPolynomial linear combination overflow")
+}
+
+#[inline]
+fn convolve<T: Ring>(
+    lhs: &LaurentPolynomial<T>,
+    rhs: &LaurentPolynomial<T>,
+) -> LaurentPolynomial<T> {
+    try_convolve(lhs, rhs).expect("LaurentPolynomial multiplication overflow")
 }
 
 impl<T: Ring> Add for LaurentPolynomial<T> {
@@ -248,7 +357,7 @@ impl<T: Ring> Neg for LaurentPolynomial<T> {
     fn neg(mut self) -> Self {
         let orig_len = self.coeffs.len();
         for c in &mut self.coeffs {
-            *c = -std::mem::replace(c, T::zero());
+            *c = c.ring_ref_neg();
         }
         debug_assert_eq!(self.coeffs.len(), orig_len);
         self
@@ -259,11 +368,11 @@ impl<T: Ring> Neg for &LaurentPolynomial<T> {
     type Output = LaurentPolynomial<T>;
     #[verified_engine::verified]
     fn neg(self) -> LaurentPolynomial<T> {
-        let res = LaurentPolynomial::new(
-            self.min_exp,
-            self.coeffs.iter().map(|c| -c.clone()).collect(),
-        );
-        debug_assert!(res.coeffs.len() <= self.coeffs.len());
+        let res = LaurentPolynomial {
+            min_exp: self.min_exp,
+            coeffs: self.coeffs.iter().map(Ring::ring_ref_neg).collect(),
+        };
+        debug_assert_eq!(res.coeffs.len(), self.coeffs.len());
         res
     }
 }
@@ -278,24 +387,20 @@ mod tests {
         let b = LaurentPolynomial::new(-1, vec![2_i64, 5, -1]);
         let c = LaurentPolynomial::new(0, vec![-1_i64, 4]);
 
-        // Associativity and commutativity
         assert_eq!((&a + &b) + &c, &a + (&b + &c));
         assert_eq!(&a + &b, &b + &a);
         assert_eq!((&a * &b) * &c, &a * (&b * &c));
         assert_eq!(&a * &b, &b * &a);
 
-        // Distributivity, additive inverse, and multiplicative identity
         assert_eq!(&a * (&b + &c), (&a * &b) + (&a * &c));
         assert_eq!(&a + (-&a), LaurentPolynomial::zero());
         assert_eq!(&a * LaurentPolynomial::one(), a);
 
-        // Monomial inverse identity t^3 * t^-3 == 1
         let t3 = LaurentPolynomial::monomial(1_i64, 3);
         let tm3 = LaurentPolynomial::monomial(1_i64, -3);
         assert_eq!(&t3 * &tm3, LaurentPolynomial::one());
         assert_eq!(a.shift(4).shift(-4), a);
 
-        // Reciprocal check on figure-eight Alexander polynomial -t^-1 + 3 - t
         let fig8 = LaurentPolynomial::new(-1, vec![-1_i64, 3, -1]);
         assert!(fig8.is_reciprocal());
         assert!(!fig8.shift(2).is_reciprocal());

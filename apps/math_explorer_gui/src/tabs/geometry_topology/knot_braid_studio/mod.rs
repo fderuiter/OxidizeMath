@@ -34,10 +34,10 @@ const fn default_torus_q() -> i32 {
     3
 }
 const fn default_lissajous_freqs() -> [usize; 3] {
-    [3, 4, 7]
+    [3, 2, 7]
 }
 const fn default_lissajous_phases() -> [f64; 3] {
-    [0.1, 0.7, 0.2]
+    [0.7, 0.2, 0.0]
 }
 const fn default_major_radius() -> f64 {
     2.0
