@@ -34,3 +34,4 @@ impl EuclideanDomain for i32 {}
 impl EuclideanDomain for i64 {}
 impl EuclideanDomain for i128 {}
 impl EuclideanDomain for isize {}
+impl EuclideanDomain for dashu::integer::IBig {}

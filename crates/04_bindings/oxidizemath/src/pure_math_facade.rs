@@ -5,9 +5,10 @@
 pub mod algebra {
     pub use ::pure_math::pure_math::algebra::{
         AbelianGroup, BraidError, BraidWord, CyclicElement, EuclideanDomain, Field, Fp, Group,
-        LaurentPolynomial, LinearAlgebraError, MAX_BRAID_STRANDS, MAX_BRAID_WORD_LEN, Monoid,
-        Permutation, Polynomial, RefOps, Ring, Scalar, Semigroup, Zn, fields, generate_left_coset,
-        generate_right_coset, group, is_normal_subgroup, is_subgroup, polynomial, traits,
+        LaurentError, LaurentPolynomial, LinearAlgebraError, MAX_BRAID_STRANDS, MAX_BRAID_WORD_LEN,
+        MAX_LAURENT_SPAN, Monoid, Permutation, Polynomial, RefOps, Ring, Scalar, Semigroup, Zn,
+        fields, generate_left_coset, generate_right_coset, group, is_normal_subgroup, is_subgroup,
+        polynomial, traits,
     };
 
     /// Symbolic canonical forms, eigensolvers, and numerical linear algebra decompositions/solvers.

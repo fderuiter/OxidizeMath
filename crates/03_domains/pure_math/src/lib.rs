@@ -23,7 +23,7 @@ pub mod __doctest_facade {
         pub use crate::error::{
             AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
             EvolutionError, FractranError, GameTheoryError, Glicko2Error, GraphTheoryError,
-            HyperbolicError, KellyError, KnotError, LinalgError, LinearAlgebraError,
+            HyperbolicError, KellyError, KnotError, LaurentError, LinalgError, LinearAlgebraError,
             MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
             OptimizationError, OptionPricingError, OuError, PoissonError, PureMathError,
             PureMathError as Error, QueueingError, RiskError, ScalarError, StochasticError,

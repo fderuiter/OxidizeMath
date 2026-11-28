@@ -10,13 +10,13 @@ use super::diagram::{
 mod reidemeister_ii;
 mod reidemeister_iii;
 use self::reidemeister_ii::{
-    find_rii_bigon, insert_rii_bigon, segment_midpoint, splice_rii_strand,
+    find_rii_bigon, insert_rii_bigon, insert_rii_on_free_loops, segment_midpoint, splice_rii_strand,
 };
 pub use reidemeister_iii::ReidemeisterTriangle;
 
 impl PlanarDiagram {
     /// Applies a **Reidemeister I** twist addition (`sign`) on `segment_id` (or on `free_loops`
-    /// when `crossings.is_empty() && segment_id == 0`), changing diagram writhe by $\pm 1$.
+    /// when `crossings.is_empty() && segment_id < free_loops`), changing diagram writhe by $\pm 1$.
     ///
     /// # Errors
     /// Returns [`KnotError`] if `segment_id` is out of bounds or the crossing cap is exceeded.
@@ -104,14 +104,7 @@ impl PlanarDiagram {
             });
         }
         if self.crossings.is_empty() {
-            if self.free_loops == 0 || over_segment_id != 0 || under_segment_id != 0 {
-                return Err(KnotError::SegmentIndexOutOfBounds {
-                    index: over_segment_id.max(under_segment_id),
-                    count: 0,
-                });
-            }
-            let _ = self.apply_reidemeister_i_add(0, CrossingSign::Positive)?;
-            return Ok(insert_rii_bigon(self, 0, 1));
+            return insert_rii_on_free_loops(self, over_segment_id, under_segment_id);
         }
         let m = self.segments.len();
         if over_segment_id >= m || under_segment_id >= m {
@@ -126,7 +119,7 @@ impl PlanarDiagram {
                 reason: "over and under segments must be distinct",
             });
         }
-        let pair = insert_rii_bigon(self, over_segment_id, under_segment_id);
+        let pair = insert_rii_bigon(self, over_segment_id, under_segment_id)?;
         assert_eq!(self.segments.len(), 2 * self.crossings.len());
         Ok(pair)
     }
@@ -172,10 +165,10 @@ fn add_ri_on_free_loop(
     segment_id: usize,
     sign: CrossingSign,
 ) -> Result<usize, KnotError> {
-    if diagram.free_loops == 0 || segment_id != 0 {
+    if segment_id >= diagram.free_loops {
         return Err(KnotError::SegmentIndexOutOfBounds {
             index: segment_id,
-            count: 0,
+            count: diagram.free_loops,
         });
     }
     diagram.free_loops -= 1;

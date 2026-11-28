@@ -1,4 +1,4 @@
-//! Braid-closure planar diagram construction helper.
+//! Braid-closure planar diagram construction with concentric annular strand routing.
 
 // [cite:knot_braid_topology]
 
@@ -6,7 +6,70 @@ use super::{Crossing, CrossingSign, DiagramSegment, Endpoint, PlanarDiagram};
 use std::f64::consts::TAU;
 
 #[verified_engine::verified]
+fn strand_radius(slot: usize, n: usize) -> f64 {
+    let span = (n.max(2) - 1) as f64;
+    0.44 + 0.40 * ((slot as f64) / span)
+}
+
+#[verified_engine::verified]
+fn crossing_radius(left: usize, n: usize) -> f64 {
+    0.5 * (strand_radius(left, n) + strand_radius(left + 1, n))
+}
+
+#[verified_engine::verified]
+fn annular_track_waypoints(
+    r_track: f64,
+    step_tail: usize,
+    step_head: usize,
+    c_count: usize,
+) -> Vec<[f64; 2]> {
+    let step_angle = TAU / (c_count.max(1) as f64);
+    let theta_tail = step_angle * (step_tail as f64);
+    let theta_head = step_angle * (step_head as f64);
+    let mut span = (theta_head - theta_tail).rem_euclid(TAU);
+    if span < 1e-9 {
+        span = TAU;
+    }
+    let collar = (0.25 * span).min(0.32 * step_angle).min(0.22);
+    let inner_span = (span - 2.0 * collar).max(0.0);
+    let mid_div = ((inner_span / 0.36).ceil() as usize).clamp(1, 14);
+    let mut waypoints = Vec::with_capacity(mid_div + 2);
+    let a_start = theta_tail + collar;
+    waypoints.push([r_track * a_start.cos(), r_track * a_start.sin()]);
+    if inner_span > 1e-6 {
+        if mid_div == 1 {
+            let a_mid = theta_tail + 0.5 * span;
+            waypoints.push([r_track * a_mid.cos(), r_track * a_mid.sin()]);
+        } else {
+            for k in 1..mid_div {
+                let a = a_start + inner_span * (k as f64) / (mid_div as f64);
+                waypoints.push([r_track * a.cos(), r_track * a.sin()]);
+            }
+        }
+    }
+    let a_end = theta_tail + span - collar;
+    if (a_end - a_start).abs() > 1e-6 {
+        waypoints.push([r_track * a_end.cos(), r_track * a_end.sin()]);
+    }
+    waypoints
+}
+
+#[verified_engine::verified]
 pub(super) fn build_braid_closure_diagram(n: usize, gens: &[i32]) -> PlanarDiagram {
+    let n = n.max(2);
+    if gens.is_empty()
+        || gens.iter().any(|&g| {
+            let idx = g.unsigned_abs() as usize;
+            idx == 0 || idx >= n
+        })
+    {
+        return PlanarDiagram {
+            crossings: Vec::new(),
+            segments: Vec::new(),
+            free_loops: n,
+        };
+    }
+
     let c_count = gens.len();
     let mut crossings = Vec::with_capacity(c_count);
     let mut first_in_slot: Vec<Option<Endpoint>> = vec![None; n];
@@ -23,8 +86,7 @@ pub(super) fn build_braid_closure_diagram(n: usize, gens: &[i32]) -> PlanarDiagr
             CrossingSign::Negative
         };
         let theta = TAU * (step as f64) / (c_count as f64);
-        let r = 0.56
-            + 0.22 * (((left as f64) + 0.5 - 0.5 * ((n - 1) as f64)) / ((n.max(2) - 1) as f64));
+        let r = crossing_radius(left, n);
         crossings.push(Crossing {
             sign,
             slots: [0; 4],
@@ -43,11 +105,17 @@ pub(super) fn build_braid_closure_diagram(n: usize, gens: &[i32]) -> PlanarDiagr
                 slot: in_slot,
             };
             if let Some(tail) = last_out_at_slot[slot_idx] {
+                let waypoints = annular_track_waypoints(
+                    strand_radius(slot_idx, n),
+                    tail.crossing,
+                    step,
+                    c_count,
+                );
                 let seg_id = segments.len();
                 segments.push(DiagramSegment {
                     tail,
                     head,
-                    waypoints: Vec::new(),
+                    waypoints,
                 });
                 crossings[tail.crossing].slots[tail.slot as usize] = seg_id;
                 crossings[head.crossing].slots[head.slot as usize] = seg_id;
@@ -68,6 +136,7 @@ pub(super) fn build_braid_closure_diagram(n: usize, gens: &[i32]) -> PlanarDiagr
 
     let free_loops = close_braid_strands(
         n,
+        c_count,
         &mut crossings,
         &mut segments,
         &first_in_slot,
@@ -84,6 +153,7 @@ pub(super) fn build_braid_closure_diagram(n: usize, gens: &[i32]) -> PlanarDiagr
 #[verified_engine::verified]
 fn close_braid_strands(
     n: usize,
+    c_count: usize,
     crossings: &mut [Crossing],
     segments: &mut Vec<DiagramSegment>,
     first_in_slot: &[Option<Endpoint>],
@@ -107,20 +177,12 @@ fn close_braid_strands(
                 .position(|&orig| orig == cur)
                 .unwrap_or(cur);
         };
-        let p_tail = crossings[tail.crossing].position;
-        let p_head = crossings[head.crossing].position;
-        let ang_t = p_tail[1].atan2(p_tail[0]);
-        let mut ang_h = p_head[1].atan2(p_head[0]);
-        if ang_h <= ang_t {
-            ang_h += TAU;
-        }
-        let r_arc = 0.84 + 0.04 * (top_slot as f64);
-        let waypoints = (1..=3)
-            .map(|k| {
-                let a = ang_t + (ang_h - ang_t) * (k as f64) / 4.0;
-                [r_arc * a.cos(), r_arc * a.sin()]
-            })
-            .collect();
+        let waypoints = annular_track_waypoints(
+            strand_radius(top_slot, n),
+            tail.crossing,
+            head.crossing,
+            c_count,
+        );
         let seg_id = segments.len();
         segments.push(DiagramSegment {
             tail,

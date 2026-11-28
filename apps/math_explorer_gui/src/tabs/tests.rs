@@ -167,6 +167,7 @@ fn assert_scoped_package_rerun_directives(
     for excluded_pkg in [
         "unified_verification",
         "markdown_tests",
+        "oxidize_wasm",
         "verified_engine",
         "verified_engine_macros",
         "xtask",

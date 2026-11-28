@@ -44,6 +44,7 @@ impl Error {
             Self::Hyperbolic(err) => Some(err),
             Self::Kelly(err) => Some(err),
             Self::Knot(err) => Some(err),
+            Self::Laurent(err) => Some(err),
             Self::LinearAlgebra(err) => Some(err),
             Self::MarketPricing(err) => Some(err),
             Self::Markov(err) => Some(err),
