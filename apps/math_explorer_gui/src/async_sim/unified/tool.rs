@@ -14,6 +14,9 @@ use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+#[path = "export.rs"]
+mod export;
+
 #[allow(missing_docs)]
 pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) controller: BackgroundWorker<UnifiedSimRunner<M>>,
@@ -257,16 +260,16 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        let base = if M::is_raster_model() {
-            crate::framework::ExportCapabilities::raster_only()
-        } else {
-            crate::framework::ExportCapabilities::plot()
-        };
+        let base = crate::framework::ExportCapabilities::plot();
         if M::supports_sonification() {
             base.with_audio()
         } else {
             base
         }
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_unified_export_tables()
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -288,18 +291,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
-        let snapshot = self
-            .stepped_snapshot
-            .as_ref()
-            .or_else(|| self.controller.latest_snapshot())?;
-        let guard = snapshot.pixels.try_read().ok()?;
-        if guard.is_empty() || snapshot.width == 0 || snapshot.height == 0 {
-            return None;
-        }
-        Some(ColorImage::new(
-            [snapshot.width, snapshot.height],
-            guard.clone(),
-        ))
+        self.build_unified_raster_export()
     }
 
     fn step_simulation(&mut self) {

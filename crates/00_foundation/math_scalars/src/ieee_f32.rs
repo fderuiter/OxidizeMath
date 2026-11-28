@@ -5,9 +5,9 @@ use crate::ieee::{hypot_f32, powi_field, sqrt_f32};
 use crate::traits::{ComplexField, Field, RealField, Ring};
 use core::cmp::Ordering;
 
-const F32_INV_2POW24: f32 = 1.0 / ((1u32 << 24) as f32);
+const F32_INV_2POW24: f32 = 1.0 / ((1_u32 << 24) as f32);
 const F32_MAX_BELOW_ONE: f32 = f32::from_bits(0x3f7f_ffff);
-const F32_MIN_ABOVE_ZERO: f32 = 1.0e-7_f32;
+const F32_MIN_ABOVE_ZERO: f32 = 1.0 / ((1_u32 << 25) as f32);
 
 impl Ring for f32 {
     #[inline]
@@ -263,7 +263,11 @@ impl RealField for f32 {
     }
     #[inline]
     fn uniform_open_from_u64(u64_word: u64) -> Self {
-        ((((u64_word >> 40) as u32 as f32) + 0.5) * F32_INV_2POW24)
-            .clamp(F32_MIN_ABOVE_ZERO, F32_MAX_BELOW_ONE)
+        let bits = (u64_word >> 40) as u32;
+        if bits == 0 {
+            F32_MIN_ABOVE_ZERO
+        } else {
+            (bits as f32) * F32_INV_2POW24
+        }
     }
 }

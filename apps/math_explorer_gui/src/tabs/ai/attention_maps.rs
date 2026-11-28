@@ -121,7 +121,11 @@ impl InteractiveTool for AttentionMapsTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only()
+        crate::framework::ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        export::build_attention_tables(self)
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
@@ -229,6 +233,8 @@ inventory::submit! {
     }
 }
 
+#[path = "attention_maps/export.rs"]
+mod export;
 #[path = "attention_maps/preset.rs"]
 mod preset;
 #[cfg(test)]

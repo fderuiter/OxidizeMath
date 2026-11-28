@@ -21,6 +21,8 @@ use math_explorer::ai::reinforcement_learning::{move_to_index, DenseRlWorkspace,
 
 #[path = "q_table_inspector/canvas.rs"]
 mod canvas;
+#[path = "q_table_inspector/export.rs"]
+mod export;
 #[path = "q_table_inspector/preset.rs"]
 mod preset;
 #[path = "q_table_inspector/runner.rs"]
@@ -399,7 +401,16 @@ impl InteractiveTool for QTableInspectorTool {
         "Q-Table Inspector"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_q_table_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_q_table_export_tables()
+    }
+    fn step_simulation(&mut self) {
+        self.step_q_table_episode();
     }
     fn domain(&self) -> &'static str {
         "ai"
@@ -473,20 +484,5 @@ inventory::submit! {
             "sonification",
         ],
         build: || Box::new(QTableInspectorTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for QTableInspectorTool {
-    fn theory_description(&self) -> String {
-        "Bellman optimality $V^*(s) = \\max_a \\sum_{s'} P(s'|s,a)[R + \\gamma V^*(s')]$ compared against empirical temporal-difference $Q(s,a)$ and policy-gradient $V_\\pi(s)$ value tables.".into()
-    }
-    fn phonetic_description(&self) -> String {
-        "Q-learning and Bellman optimality equation theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Reinforcement Learning: An Introduction (Sutton & Barto, 2018)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
     }
 }

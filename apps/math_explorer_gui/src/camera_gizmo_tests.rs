@@ -381,7 +381,7 @@ fn test_all_six_3d_tools_hide_2d_settings_and_preserve_exports() {
         ("CrystalViewer", true),
         ("AttractorPlotter", true),
         ("SpinVisualizer", true),
-        ("Gaussian Splatting", false),
+        ("Gaussian Splatting", true),
     ];
 
     for (id, expects_plot_export) in tool_specs {

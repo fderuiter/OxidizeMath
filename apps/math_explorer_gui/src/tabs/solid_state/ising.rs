@@ -16,6 +16,8 @@ pub mod atlas;
 mod brush;
 #[path = "ising/challenge.rs"]
 pub mod challenge;
+#[path = "ising/export.rs"]
+mod export;
 #[path = "ising/graph_canvas.rs"]
 mod graph_canvas;
 #[path = "ising/graph_mode.rs"]
@@ -308,7 +310,11 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only()
+        crate::framework::ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_ising_export_tables()
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {

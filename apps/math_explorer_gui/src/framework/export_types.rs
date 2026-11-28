@@ -190,7 +190,6 @@ impl ExportCapabilities {
     }
 
     /// Capability profile for analytical calculators that export tabular `CSV` and `JSON` datasets without offscreen plot or raster figures.
-    #[cfg(test)]
     #[must_use]
     pub const fn dataset_only() -> Self {
         Self {
